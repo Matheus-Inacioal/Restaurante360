@@ -26,14 +26,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Header } from '@/components/header';
 import type { User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { UserForm } from '@/components/manager/user-form';
 
 export default function UsersPage() {
-    const { firestore, user: currentUser } = useFirebase();
+    const { firestore } = useFirebase();
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
 
     const usersColRef = useMemoFirebase(() => 
         firestore ? collection(firestore, 'users') : null,
@@ -47,11 +49,19 @@ export default function UsersPage() {
         return name.split(' ').map(n => n[0]).join('');
     }
 
+    const handleFormSuccess = () => {
+        setIsSheetOpen(false);
+        // Data will be refetched automatically by useCollection
+    };
+    
+    const handleAddNew = () => {
+        setIsSheetOpen(true);
+    }
+
     const pageTitle = "Gestão de Usuários";
 
   return (
     <div className="flex flex-col">
-      {/* Header is in the layout, but we can update its title if needed. This page doesn't receive the user prop directly anymore */}
       <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
         <div className="flex items-center justify-between">
           <div>
@@ -60,10 +70,25 @@ export default function UsersPage() {
               Gerencie os acessos e funções da sua equipe.
             </p>
           </div>
-          <Button>
+          <Button onClick={handleAddNew}>
             <PlusCircle className="mr-2 h-4 w-4" /> Novo Usuário
           </Button>
         </div>
+
+        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+            <SheetContent className="sm:max-w-lg w-[90vw] overflow-y-auto">
+                <SheetHeader>
+                    <SheetTitle className="font-headline text-2xl">Criar Novo Usuário</SheetTitle>
+                    <SheetDescription>
+                        Preencha os detalhes para adicionar um novo membro à equipe.
+                    </SheetDescription>
+                </SheetHeader>
+                <div className="mt-8">
+                    <UserForm onSuccess={handleFormSuccess} />
+                </div>
+            </SheetContent>
+        </Sheet>
+
         <Card>
           <CardContent className="pt-6">
             <Table>
