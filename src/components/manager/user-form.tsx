@@ -27,7 +27,7 @@ const formSchema = z.object({
   name: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
   email: z.string().email('Por favor, insira um email válido.'),
   password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres.'),
-  role: z.enum(['manager', 'collaborator']),
+  role: z.enum(['gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']),
 });
 
 type UserFormValues = z.infer<typeof formSchema>;
@@ -44,7 +44,7 @@ export function UserForm({ onSuccess }: UserFormProps) {
       name: '',
       email: '',
       password: '',
-      role: 'collaborator',
+      role: 'garcon',
     },
   });
 
@@ -121,8 +121,12 @@ export function UserForm({ onSuccess }: UserFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="collaborator">Colaborador</SelectItem>
-                  <SelectItem value="manager">Gestor</SelectItem>
+                  <SelectItem value="gestor">Gestor</SelectItem>
+                  <SelectItem value="bar">Bar</SelectItem>
+                  <SelectItem value="pia">Pia</SelectItem>
+                  <SelectItem value="cozinha">Cozinha</SelectItem>
+                  <SelectItem value="producao">Produção</SelectItem>
+                  <SelectItem value="garcon">Garçom</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />

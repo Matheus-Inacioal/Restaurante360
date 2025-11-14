@@ -73,7 +73,7 @@ export default function LoginPage() {
           id: user.uid,
           name: 'Gestor Master',
           email: user.email,
-          role: 'manager',
+          role: 'gestor',
           isActive: true,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -87,6 +87,8 @@ export default function LoginPage() {
           title: 'Email já cadastrado',
           description: 'Este email já está em uso. Tente fazer login.',
         });
+        // Try to log in if user already exists
+        await handleLogin();
       } else {
         toast({
           variant: 'destructive',

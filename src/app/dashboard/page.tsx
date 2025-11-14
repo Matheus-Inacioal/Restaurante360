@@ -29,7 +29,7 @@ export default function DashboardPage() {
     <div className="flex flex-col">
       {/* O Header foi movido para o layout, então não precisa ser renderizado aqui */}
       <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-        {currentUser.role === 'manager' ? <ManagerDashboard /> : <CollaboratorDashboard />}
+        {currentUser.role === 'manager' || currentUser.role === 'gestor' ? <ManagerDashboard /> : <CollaboratorDashboard />}
       </main>
     </div>
   );

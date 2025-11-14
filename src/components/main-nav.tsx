@@ -72,7 +72,7 @@ const collaboratorNavItems: NavItem[] = [
 
 export function MainNav({ role }: { role: UserRole }) {
   const pathname = usePathname();
-  const navItems = role === 'manager' ? managerNavItems : collaboratorNavItems;
+  const navItems = role === 'manager' || role === 'gestor' ? managerNavItems : collaboratorNavItems;
 
   const renderNavItems = (items: NavItem[]) => {
     return items.map((item) => {

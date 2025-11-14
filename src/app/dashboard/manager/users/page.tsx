@@ -26,12 +26,23 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { User } from '@/lib/types';
+import type { User, UserRole } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { UserForm } from '@/components/manager/user-form';
+
+const roleLabels: Record<UserRole, string> = {
+    manager: 'Gestor',
+    collaborator: 'Colaborador',
+    gestor: 'Gestor',
+    bar: 'Bar',
+    pia: 'Pia',
+    cozinha: 'Cozinha',
+    producao: 'Produção',
+    garcon: 'Garçom',
+};
 
 export default function UsersPage() {
     const { firestore } = useFirebase();
@@ -123,10 +134,10 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{user.email}</TableCell>
                     <TableCell>
-                      <Badge variant={user.role === 'manager' ? 'default' : 'secondary'}
-                       className={user.role === 'manager' ? '' : ''}
+                      <Badge variant={user.role === 'gestor' ? 'default' : 'secondary'}
+                       className={user.role === 'gestor' ? '' : ''}
                       >
-                        {user.role === 'manager' ? 'Gestor' : 'Colaborador'}
+                        {roleLabels[user.role] || user.role}
                       </Badge>
                     </TableCell>
                     <TableCell>

@@ -1,4 +1,4 @@
-export type UserRole = 'manager' | 'collaborator';
+export type UserRole = 'manager' | 'collaborator' | 'gestor' | 'bar' | 'pia' | 'cozinha' | 'producao' | 'garcon';
 
 export type User = {
   id: string;

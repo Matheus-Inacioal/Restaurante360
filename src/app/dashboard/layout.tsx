@@ -16,7 +16,7 @@ import { useFirebase } from '@/firebase/provider';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import type { User } from '@/lib/types';
+import type { User, UserRole } from '@/lib/types';
 import { doc } from 'firebase/firestore';
 
 export default function DashboardLayout({
@@ -51,6 +51,13 @@ export default function DashboardLayout({
     return <div className="flex h-screen items-center justify-center">Carregando dados do usuário...</div>;
   }
 
+  const getDashboardTitle = (role: UserRole) => {
+    if (role === 'manager' || role === 'gestor') {
+      return 'Dashboard do Gestor';
+    }
+    return 'Painel do Colaborador';
+  };
+
   return (
     <SidebarProvider>
       <Sidebar side="left" variant="sidebar" collapsible="icon">
@@ -70,7 +77,7 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <Header user={currentUser} title="Dashboard" />
+        <Header user={currentUser} title={getDashboardTitle(currentUser.role)} />
         {children}
       </SidebarInset>
     </SidebarProvider>
