@@ -36,7 +36,7 @@ export default function DashboardLayout({
                     <UtensilsCrossed className="h-6 w-6 text-sidebar-primary-foreground" />
                 </div>
                 <span className="font-headline group-data-[collapsible=icon]:hidden">
-                    GourmetFlow
+                    restaurante360
                 </span>
             </Link>
         </SidebarHeader>

@@ -23,7 +23,7 @@ export default function LoginPage() {
               <UtensilsCrossed className="h-8 w-8 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-headline text-primary">GourmetFlow</CardTitle>
+          <CardTitle className="text-3xl font-headline text-primary">restaurante360</CardTitle>
           <CardDescription>
             Faça login para gerenciar as operações do seu restaurante.
           </CardDescription>

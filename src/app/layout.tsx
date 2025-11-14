@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 
 export const metadata: Metadata = {
-  title: 'GourmetFlow',
+  title: 'restaurante360',
   description: 'Sistema de Gestão Operacional Completa para Restaurantes',
 };
 
