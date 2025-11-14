@@ -82,11 +82,18 @@ export default function LoginPage() {
       
       router.push('/dashboard');
     } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro de Cadastro',
-        description: error.message,
-      });
+      if (error.code === 'auth/email-already-in-use') {
+        toast({
+          title: 'Email já cadastrado',
+          description: 'Este email já está em uso. Tente fazer login.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Erro de Cadastro',
+          description: error.message,
+        });
+      }
       console.error('Error signing up:', error);
     }
   };
