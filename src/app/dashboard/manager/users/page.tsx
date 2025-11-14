@@ -27,26 +27,35 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Header } from '@/components/header';
-import { mockUsers } from '@/lib/data';
 import type { User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-
-const currentUser = mockUsers.find(u => u.role === 'manager')!;
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 
 export default function UsersPage() {
-    const [users, setUsers] = useState<User[]>(mockUsers);
+    const { firestore, user: currentUser } = useFirebase();
+
+    const usersColRef = useMemoFirebase(() => 
+        firestore ? collection(firestore, 'users') : null,
+        [firestore]
+    );
+
+    const { data: users, isLoading } = useCollection<User>(usersColRef);
 
     const getUserInitials = (name: string) => {
+        if (!name) return '';
         return name.split(' ').map(n => n[0]).join('');
     }
 
+    const pageTitle = "Gestão de Usuários";
+
   return (
     <div className="flex flex-col">
-      <Header user={currentUser} title="Gestão de Usuários" />
+      {/* Header is in the layout, but we can update its title if needed. This page doesn't receive the user prop directly anymore */}
       <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">Usuários do Sistema</h2>
+            <h2 className="text-2xl font-bold tracking-tight">{pageTitle}</h2>
             <p className="text-muted-foreground">
               Gerencie os acessos e funções da sua equipe.
             </p>
@@ -69,7 +78,12 @@ export default function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
+                {isLoading && (
+                    <TableRow>
+                        <TableCell colSpan={4} className="text-center">Carregando usuários...</TableCell>
+                    </TableRow>
+                )}
+                {users && users.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">
                         <div className="flex items-center gap-3">

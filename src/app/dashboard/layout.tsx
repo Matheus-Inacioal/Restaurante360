@@ -1,3 +1,5 @@
+'use client';
+
 import { UtensilsCrossed } from 'lucide-react';
 import {
   Sidebar,
@@ -9,24 +11,46 @@ import {
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/header';
 import { MainNav } from '@/components/main-nav';
-import { mockUsers } from '@/lib/data';
+import { useUser, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirebase } from '@/firebase/provider';
 import Link from 'next/link';
-
-// In a real app, you'd get the user from an auth context.
-// We'll simulate a manager and a collaborator.
-const manager = mockUsers.find(u => u.role === 'manager');
-if (!manager) throw new Error('Manager not found in mock data');
-
-// To view as a collaborator, change 'manager' to 'collaborator' below
-const userRole = 'manager';
-const currentUser = mockUsers.find(u => u.role === userRole)!;
-
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import type { User } from '@/lib/types';
+import { doc } from 'firebase/firestore';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user, isUserLoading } = useUser();
+  const { firestore } = useFirebase();
+  const router = useRouter();
+
+  const userDocRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const { data: userData, isLoading: isUserDataLoading } = useDoc<User>(userDocRef);
+
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      router.push('/');
+    }
+  }, [user, isUserLoading, router]);
+
+  if (isUserLoading || isUserDataLoading || !user) {
+    return <div className="flex h-screen items-center justify-center">Carregando...</div>;
+  }
+  
+  const currentUser: User | null = userData ? { ...userData, id: user.uid } : null;
+
+  if (!currentUser) {
+    return <div className="flex h-screen items-center justify-center">Carregando dados do usuário...</div>;
+  }
+
   return (
     <SidebarProvider>
       <Sidebar side="left" variant="sidebar" collapsible="icon">
@@ -46,6 +70,7 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
+        <Header user={currentUser} title="Dashboard" />
         {children}
       </SidebarInset>
     </SidebarProvider>

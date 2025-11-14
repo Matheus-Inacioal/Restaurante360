@@ -1,16 +1,33 @@
+'use client';
+
 import { Header } from '@/components/header';
-import { mockUsers } from '@/lib/data';
 import { ManagerDashboard } from '@/components/manager/manager-dashboard';
 import { CollaboratorDashboard } from '@/components/collaborator/collaborator-dashboard';
-
-// In a real app, this would come from an auth context
-const userRole = 'manager'; 
-const currentUser = mockUsers.find(u => u.role === userRole)!;
+import { useUser, useDoc, useMemoFirebase, useFirebase } from '@/firebase';
+import type { User } from '@/lib/types';
+import { doc } from 'firebase/firestore';
 
 export default function DashboardPage() {
+  const { user } = useUser();
+  const { firestore } = useFirebase();
+  const userDocRef = useMemoFirebase(() => user ? doc(firestore, 'users', user.uid) : null, [firestore, user]);
+  const { data: currentUserData, isLoading } = useDoc<User>(userDocRef);
+
+  const currentUser: User | null = currentUserData ? { ...currentUserData, id: user!.uid } : null;
+
+  if (isLoading || !currentUser) {
+    return (
+      <div className="flex flex-col">
+        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+          <p>Carregando...</p>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col">
-      <Header user={currentUser} title="Dashboard" />
+      {/* O Header foi movido para o layout, então não precisa ser renderizado aqui */}
       <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
         {currentUser.role === 'manager' ? <ManagerDashboard /> : <CollaboratorDashboard />}
       </main>
