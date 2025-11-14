@@ -1,3 +1,28 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "user-avatar-1",
+      "description": "Avatar for Ana Silva",
+      "imageUrl": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8d29tYW4lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NjMxMDIyNjJ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "woman portrait"
+    },
+    {
+      "id": "user-avatar-2",
+      "description": "Avatar for Carlos Souza",
+      "imageUrl": "https://images.unsplash.com/photo-1607031542107-f6f46b5d54e9?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxtYW4lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NjMwNjYyMjV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "man portrait"
+    },
+    {
+      "id": "user-avatar-3",
+      "description": "Avatar for Beatriz Costa",
+      "imageUrl": "https://images.unsplash.com/photo-1692736475357-7c18bfbb808b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHx3b21hbiUyMHNtaWxpbmd8ZW58MHx8fHwxNzYzMDY2ODU4fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "woman smiling"
+    },
+    {
+      "id": "photo-evidence-1",
+      "description": "Photo evidence of a clean stove",
+      "imageUrl": "https://images.unsplash.com/photo-1567767326925-e2047bf469d0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxjbGVhbiUyMGtpdGNoZW58ZW58MHx8fHwxNzYzMTEwNTg5fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "clean kitchen"
+    }
+  ]
 }
