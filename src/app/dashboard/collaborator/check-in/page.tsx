@@ -11,11 +11,7 @@ import {
   CardTitle,
   CardFooter,
 } from '@/components/ui/card';
-import { Header } from '@/components/header';
-import { mockUsers } from '@/lib/data';
 import { useToast } from '@/hooks/use-toast';
-
-const currentUser = mockUsers.find(u => u.role === 'collaborator')!;
 
 export default function CheckInPage() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
@@ -34,45 +30,42 @@ export default function CheckInPage() {
   };
 
   return (
-    <div className="flex flex-col">
-      <Header user={currentUser} title="Check-in" />
-      <main className="flex flex-1 items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="text-center">
-            <div className="mx-auto bg-primary text-primary-foreground rounded-full h-16 w-16 flex items-center justify-center mb-4">
-                {isCheckedIn ? <CheckCircle2 className="h-8 w-8" /> : <LogIn className="h-8 w-8" />}
+    <main className="flex flex-1 items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center">
+          <div className="mx-auto bg-primary text-primary-foreground rounded-full h-16 w-16 flex items-center justify-center mb-4">
+              {isCheckedIn ? <CheckCircle2 className="h-8 w-8" /> : <LogIn className="h-8 w-8" />}
+          </div>
+          <CardTitle className="font-headline text-3xl">
+            {isCheckedIn ? 'Check-in Realizado!' : 'Registrar Ponto'}
+          </CardTitle>
+          <CardDescription>
+            {isCheckedIn
+              ? `Você iniciou seu turno às ${checkInTime}.`
+              : 'Clique no botão abaixo para registrar o início do seu turno.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isCheckedIn && (
+            <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <p className="font-semibold text-green-700 dark:text-green-300">
+                Tenha um ótimo dia de trabalho!
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">Suas tarefas já estão disponíveis no seu painel.</p>
             </div>
-            <CardTitle className="font-headline text-3xl">
-              {isCheckedIn ? 'Check-in Realizado!' : 'Registrar Ponto'}
-            </CardTitle>
-            <CardDescription>
-              {isCheckedIn
-                ? `Você iniciou seu turno às ${checkInTime}.`
-                : 'Clique no botão abaixo para registrar o início do seu turno.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isCheckedIn && (
-              <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                <p className="font-semibold text-green-700 dark:text-green-300">
-                  Tenha um ótimo dia de trabalho!
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">Suas tarefas já estão disponíveis no seu painel.</p>
-              </div>
-            )}
-          </CardContent>
-          <CardFooter>
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleCheckIn}
-              disabled={isCheckedIn}
-            >
-              {isCheckedIn ? 'Turno Iniciado' : 'Fazer Check-in Agora'}
-            </Button>
-          </CardFooter>
-        </Card>
-      </main>
-    </div>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={handleCheckIn}
+            disabled={isCheckedIn}
+          >
+            {isCheckedIn ? 'Turno Iniciado' : 'Fazer Check-in Agora'}
+          </Button>
+        </CardFooter>
+      </Card>
+    </main>
   );
 }

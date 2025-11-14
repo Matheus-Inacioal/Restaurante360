@@ -6,9 +6,6 @@ import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import {
   DropdownMenu,
@@ -26,90 +23,84 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Header } from '@/components/header';
-import { mockProcesses, mockUsers } from '@/lib/data';
+import { mockProcesses } from '@/lib/data';
 import type { Process } from '@/lib/types';
-
-const currentUser = mockUsers.find(u => u.role === 'manager')!;
 
 export default function ProcessesPage() {
     const [processes, setProcesses] = useState<Process[]>(mockProcesses);
 
   return (
-    <div className="flex flex-col">
-      <Header user={currentUser} title="Gestão de Processos" />
-      <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Processos Operacionais</h2>
-            <p className="text-muted-foreground">
-              Agrupe atividades em processos para otimizar os checklists.
-            </p>
-          </div>
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" /> Novo Processo
-          </Button>
+    <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Processos Operacionais</h2>
+          <p className="text-muted-foreground">
+            Agrupe atividades em processos para otimizar os checklists.
+          </p>
         </div>
-        <Card>
-          <CardContent className="pt-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome do Processo</TableHead>
-                  <TableHead>Nº de Atividades</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>
-                    <span className="sr-only">Ações</span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {processes.map((process) => (
-                  <TableRow key={process.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Workflow className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p>{process.name}</p>
-                          <p className="text-xs text-muted-foreground">{process.description}</p>
-                        </div>
+        <Button>
+          <PlusCircle className="mr-2 h-4 w-4" /> Novo Processo
+        </Button>
+      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome do Processo</TableHead>
+                <TableHead>Nº de Atividades</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>
+                  <span className="sr-only">Ações</span>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {processes.map((process) => (
+                <TableRow key={process.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center gap-2">
+                      <Workflow className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p>{process.name}</p>
+                        <p className="text-xs text-muted-foreground">{process.description}</p>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-base">
-                        {process.activityIds.length}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={process.isActive ? 'default' : 'destructive'}
-                       className={process.isActive ? 'bg-green-600' : ''}
-                      >
-                        {process.isActive ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button aria-haspopup="true" size="icon" variant="ghost">
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Toggle menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                          <DropdownMenuItem>Editar</DropdownMenuItem>
-                          <DropdownMenuItem>Ver Atividades</DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">Desativar</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="text-base">
+                      {process.activityIds.length}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={process.isActive ? 'default' : 'destructive'}
+                     className={process.isActive ? 'bg-green-600' : ''}
+                    >
+                      {process.isActive ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button aria-haspopup="true" size="icon" variant="ghost">
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Toggle menu</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                        <DropdownMenuItem>Editar</DropdownMenuItem>
+                        <DropdownMenuItem>Ver Atividades</DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive">Desativar</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
