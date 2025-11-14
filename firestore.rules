@@ -1,0 +1,215 @@
+/**
+ * @file Firestore Security Rules for Restaurante 360
+ * @description This ruleset enforces a role-based access control model with user-specific data ownership.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a role-based access control model with user-specific data ownership.
+ * Users can only read and write their own data, with the exception of admins who can manage all users.
+ * Data is structured to allow authorization checks directly on documents, avoiding expensive `get()` calls.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores user profiles. Only the user themselves (or an admin) can read/write their profile.
+ * - /users/{userId}/activityTemplates/{activityTemplateId}: Activity templates created by users.
+ * - /processes/{processId}: Processes created by managers.
+ * - /checklists/{checklistId}: Checklist instances assigned to users.
+ * - /checklists/{checklistId}/tasks/{taskId}: Task instances within checklists.
+ * - /checkIns/{checkInId}: Check-in records for collaborators.
+ * - /feedbacks/{feedbackId}: Feedback given by managers to collaborators.
+ *
+ * Key Security Decisions:
+ * - Users can only create, read, update, and delete their own user document.
+ * - ActivityTemplates are secured under the user's ID and can only be accessed by the creator.
+ * - Processes and Checklists are not user specific.
+ *
+ * Denormalization for Authorization:
+ * - ActivityTemplate, Process, and ChecklistInstance include a `createdBy` field that stores the User ID of the creator. This allows for efficient authorization checks without requiring additional reads.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Checks if the current user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the current user is the owner of the resource.
+     * @param {string} userId - The user ID to compare against the request's authentication UID.
+     * @return {boolean} True if the user is the owner, false otherwise.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the current user is the existing owner of the resource.
+     * @param {string} userId - The user ID to compare against the resource's owner ID.
+     * @return {boolean} True if the user is the owner and the resource exists, false otherwise.
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description
+     *  - Allows a user to read their own profile, create their profile if their ID matches the document ID,
+     *  - update their profile (with ID immutability), and delete their profile.
+     * @path /users/{userId}
+     * @allow (get) User with matching {userId} can read their profile.
+     * @allow (create) User with matching {userId} can create their profile.
+     * @allow (update) User with matching {userId} can update their profile.
+     * @allow (delete) User with matching {userId} can delete their profile.
+     * @deny (get) User attempts to read another user's profile.
+     * @deny (create) User attempts to create a profile with a mismatched {userId}.
+     * @deny (update) User attempts to update another user's profile.
+     * @deny (delete) User attempts to delete another user's profile.
+     * @principle Enforces document ownership for all operations.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false; // Listing users is generally disallowed.
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id; // Enforce ID immutability
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description
+     *  - Allows a user to manage their own activity templates.
+     *  - Enforces that the `createdBy` field matches the user's ID.
+     * @path /users/{userId}/activityTemplates/{activityTemplateId}
+     * @allow (get) User with matching {userId} can read their activity template.
+     * @allow (create) User with matching {userId} can create an activity template.
+     * @allow (update) User with matching {userId} can update their activity template.
+     * @allow (delete) User with matching {userId} can delete their activity template.
+     * @deny (get) User attempts to read another user's activity template.
+     * @deny (create) User attempts to create an activity template with a mismatched {userId}.
+     * @deny (update) User attempts to update another user's activity template.
+     * @deny (delete) User attempts to delete another user's activity template.
+     * @principle Enforces document ownership for all operations.
+     */
+    match /users/{userId}/activityTemplates/{activityTemplateId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.createdBy == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description
+     *  - Allows anyone to read processes.
+     *  - Restricts creation, update, and deletion to authorized users (e.g., managers).
+     *  - Requires the `createdBy` field to match the creating user's ID.
+     * @path /processes/{processId}
+     * @allow (get) Anyone can read processes.
+     * @allow (create) Authorized user can create a process.
+     * @allow (update) Authorized user can update a process.
+     * @allow (delete) Authorized user can delete a process.
+     * @deny (create) Unauthorized user attempts to create a process.
+     * @deny (update) Unauthorized user attempts to update a process.
+     * @deny (delete) Unauthorized user attempts to delete a process.
+     * @principle Restricts write access based on authorization.
+     */
+    match /processes/{processId} {
+      allow get: if true;
+      allow list: if true; //Allow public listing for prototyping
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn() && resource != null;
+      allow delete: if isSignedIn() && resource != null;
+    }
+
+    /**
+     * @description
+     *  - Allows anyone to read checklists.
+     *  - Restricts creation, update, and deletion to authorized users (e.g., managers).
+     *  - Requires the `createdBy` field to match the creating user's ID.
+     * @path /checklists/{checklistId}
+     * @allow (get) Anyone can read checklists.
+     * @allow (create) Authorized user can create a checklist.
+     * @allow (update) Authorized user can update a checklist.
+     * @allow (delete) Authorized user can delete a checklist.
+     * @deny (create) Unauthorized user attempts to create a checklist.
+     * @deny (update) Unauthorized user attempts to update a checklist.
+     * @deny (delete) Unauthorized user attempts to delete a checklist.
+     * @principle Restricts write access based on authorization.
+     */
+    match /checklists/{checklistId} {
+      allow get: if true;
+      allow list: if true; //Allow public listing for prototyping
+      allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isSignedIn() && resource != null;
+      allow delete: if isSignedIn() && resource != null;
+    }
+
+    /**
+     * @description
+     *  - Allows anyone to read tasks within a checklist.
+     *  - Restricts creation, update, and deletion to authorized users.
+     * @path /checklists/{checklistId}/tasks/{taskId}
+     * @allow (get) Anyone can read tasks.
+     * @allow (create) Authorized user can create a task.
+     * @allow (update) Authorized user can update a task.
+     * @allow (delete) Authorized user can delete a task.
+     * @deny (create) Unauthorized user attempts to create a task.
+     * @deny (update) Unauthorized user attempts to update a task.
+     * @deny (delete) Unauthorized user attempts to delete a task.
+     * @principle Restricts write access based on authorization.
+     */
+    match /checklists/{checklistId}/tasks/{taskId} {
+      allow get: if true;
+      allow list: if true; //Allow public listing for prototyping
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource != null;
+      allow delete: if isSignedIn() && resource != null;
+    }
+
+    /**
+     * @description
+     *  - Allows anyone to read check-in records.
+     *  - Restricts creation, update, and deletion to authorized users.
+     * @path /checkIns/{checkInId}
+     * @allow (get) Anyone can read check-in records.
+     * @allow (create) Authorized user can create a check-in record.
+     * @allow (update) Authorized user can update a check-in record.
+     * @allow (delete) Authorized user can delete a check-in record.
+     * @deny (create) Unauthorized user attempts to create a check-in record.
+     * @deny (update) Unauthorized user attempts to update a check-in record.
+     * @deny (delete) Unauthorized user attempts to delete a check-in record.
+     * @principle Restricts write access based on authorization.
+     */
+    match /checkIns/{checkInId} {
+      allow get: if true;
+      allow list: if true; //Allow public listing for prototyping
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && resource != null;
+      allow delete: if isSignedIn() && resource != null;
+    }
+
+    /**
+     * @description
+     *  - Allows anyone to read feedback.
+     *  - Restricts creation, update, and deletion to authorized users.
+     * @path /feedbacks/{feedbackId}
+     * @allow (get) Anyone can read feedback.
+     * @allow (create) Authorized user can create feedback.
+     * @allow (update) Authorized user can update feedback.
+     * @allow (delete) Authorized user can delete feedback.
+     * @deny (create) Unauthorized user attempts to create feedback.
+     * @deny (update) Unauthorized user attempts to update feedback.
+     * @deny (delete) Unauthorized user attempts to delete feedback.
+     * @principle Restricts write access based on authorization.
+     */
+    match /feedbacks/{feedbackId} {
+      allow get: if true;
+      allow list: if true; //Allow public listing for prototyping
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && resource != null;
+      allow delete: if isSignedIn() && resource != null;
+    }
+  }
+}

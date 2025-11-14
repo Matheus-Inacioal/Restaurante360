@@ -1,0 +1,527 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The user's full name."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The user's role (e.g., ADMIN, MANAGER, COLLABORATOR)."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The user's phone number."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Indicates whether the user account is active."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the user was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role",
+        "isActive",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ActivityTemplate": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ActivityTemplate",
+      "type": "object",
+      "description": "Represents a template for activities or tasks.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ActivityTemplate entity."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the activity (e.g., 'Clean grill')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the activity."
+        },
+        "category": {
+          "type": "string",
+          "description": "The category of the activity (e.g., 'Hygiene', 'Kitchen')."
+        },
+        "frequency": {
+          "type": "string",
+          "description": "The frequency of the activity (e.g., 'Daily', 'Weekly', 'Monthly')."
+        },
+        "isRecurring": {
+          "type": "boolean",
+          "description": "Indicates whether the activity is recurring."
+        },
+        "requiresPhoto": {
+          "type": "boolean",
+          "description": "Indicates whether a photo is required as evidence for completing the activity."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Reference to User (Manager) who created the activity template. (Relationship: User 1:N ActivityTemplate)"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the activity template (e.g., 'active', 'inactive')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the activity template was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the activity template was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "category",
+        "frequency",
+        "isRecurring",
+        "requiresPhoto",
+        "createdBy",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Process": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Process",
+      "type": "object",
+      "description": "Represents a process consisting of a group of activities.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Process entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the process (e.g., 'Opening the restaurant')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the process."
+        },
+        "activities": {
+          "type": "array",
+          "description": "References to ActivityTemplates in the process. (Relationship: Process 1:N ActivityTemplate)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Indicates whether the process is active."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Reference to User (Manager) who created the process. (Relationship: User 1:N Process)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the process was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the process was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "activities",
+        "isActive",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ChecklistInstance": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ChecklistInstance",
+      "type": "object",
+      "description": "Represents an instance of a checklist for a specific day and shift.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the ChecklistInstance entity."
+        },
+        "date": {
+          "type": "string",
+          "description": "The date for which the checklist is generated (YYYY-MM-DD).",
+          "format": "date"
+        },
+        "shift": {
+          "type": "string",
+          "description": "The shift for which the checklist is generated (e.g., 'Morning', 'Afternoon', 'Night')."
+        },
+        "assignedTo": {
+          "type": "string",
+          "description": "Reference to User (Collaborator) or Team assigned to the checklist. (Relationship: User 1:N ChecklistInstance)"
+        },
+        "processId": {
+          "type": "string",
+          "description": "Reference to Process used to create the checklist. (Relationship: Process 1:N ChecklistInstance)",
+          "format": "uuid"
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the checklist (e.g., 'open', 'in_progress', 'completed')."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "Reference to User (Manager) who created the checklist. (Relationship: User 1:N ChecklistInstance)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the checklist was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the checklist was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "date",
+        "shift",
+        "assignedTo",
+        "status",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TaskInstance": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "TaskInstance",
+      "type": "object",
+      "description": "Represents an instance of a task within a checklist.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the TaskInstance entity."
+        },
+        "checklistId": {
+          "type": "string",
+          "description": "Reference to ChecklistInstance to which the task belongs. (Relationship: ChecklistInstance 1:N TaskInstance)"
+        },
+        "activityTemplateId": {
+          "type": "string",
+          "description": "Reference to ActivityTemplate used to create the task. (Relationship: ActivityTemplate 1:N TaskInstance)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the task (denormalized from ActivityTemplate)."
+        },
+        "description": {
+          "type": "string",
+          "description": "The description of the task (denormalized from ActivityTemplate)."
+        },
+        "requiresPhoto": {
+          "type": "boolean",
+          "description": "Indicates whether a photo is required for the task (denormalized from ActivityTemplate)."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the task (e.g., 'pending', 'in_progress', 'done', 'not_applicable')."
+        },
+        "completedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the task was completed.",
+          "format": "date-time"
+        },
+        "completedBy": {
+          "type": "string",
+          "description": "Reference to User (Collaborator) who completed the task. (Relationship: User 1:N TaskInstance)"
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL of the photo uploaded as evidence (if required).",
+          "format": "uri"
+        },
+        "feedback": {
+          "type": "string",
+          "description": "Optional feedback from the manager regarding the task."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the task was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the task was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "checklistId",
+        "activityTemplateId",
+        "title",
+        "description",
+        "requiresPhoto",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CheckIn": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CheckIn",
+      "type": "object",
+      "description": "Represents a check-in record for a collaborator at the beginning of their shift.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the CheckIn entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to User (Collaborator) who checked in. (Relationship: User 1:N CheckIn)"
+        },
+        "date": {
+          "type": "string",
+          "description": "The date of the check-in (YYYY-MM-DD).",
+          "format": "date"
+        },
+        "shift": {
+          "type": "string",
+          "description": "The shift for which the check-in is recorded (e.g., 'Morning', 'Afternoon', 'Night')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the check-in was recorded.",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "string",
+          "description": "Optional location data for the check-in."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "date",
+        "shift",
+        "createdAt"
+      ]
+    },
+    "Feedback": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Feedback",
+      "type": "object",
+      "description": "Represents feedback given from a manager to a collaborator.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Feedback entity."
+        },
+        "fromUserId": {
+          "type": "string",
+          "description": "Reference to User (Manager) who provided the feedback. (Relationship: User 1:N Feedback)"
+        },
+        "toUserId": {
+          "type": "string",
+          "description": "Reference to User (Collaborator) who received the feedback. (Relationship: User 1:N Feedback)"
+        },
+        "relatedChecklistId": {
+          "type": "string",
+          "description": "Reference to ChecklistInstance related to the feedback. (Relationship: ChecklistInstance 1:N Feedback)"
+        },
+        "relatedTaskId": {
+          "type": "string",
+          "description": "Reference to TaskInstance related to the feedback. (Relationship: TaskInstance 1:N Feedback)"
+        },
+        "message": {
+          "type": "string",
+          "description": "The feedback message."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the feedback was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "fromUserId",
+        "toUserId",
+        "message",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. Path-based ownership for user-specific data.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/activityTemplates/{activityTemplateId}",
+        "definition": {
+          "entityName": "ActivityTemplate",
+          "schema": {
+            "$ref": "#/backend/entities/ActivityTemplate"
+          },
+          "description": "Stores activity templates created by a specific user. Includes denormalized 'createdBy' (userId) for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user who created the template."
+            },
+            {
+              "name": "activityTemplateId",
+              "description": "The unique identifier of the activity template."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/processes/{processId}",
+        "definition": {
+          "entityName": "Process",
+          "schema": {
+            "$ref": "#/backend/entities/Process"
+          },
+          "description": "Stores processes. Includes denormalized 'createdBy' (userId) for authorization independence.",
+          "params": [
+            {
+              "name": "processId",
+              "description": "The unique identifier of the process."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/checklists/{checklistId}",
+        "definition": {
+          "entityName": "ChecklistInstance",
+          "schema": {
+            "$ref": "#/backend/entities/ChecklistInstance"
+          },
+          "description": "Stores checklist instances. Includes denormalized 'createdBy' (userId) for authorization independence.",
+          "params": [
+            {
+              "name": "checklistId",
+              "description": "The unique identifier of the checklist instance."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/checklists/{checklistId}/tasks/{taskId}",
+        "definition": {
+          "entityName": "TaskInstance",
+          "schema": {
+            "$ref": "#/backend/entities/TaskInstance"
+          },
+          "description": "Stores task instances within a specific checklist.",
+          "params": [
+            {
+              "name": "checklistId",
+              "description": "The unique identifier of the checklist instance."
+            },
+            {
+              "name": "taskId",
+              "description": "The unique identifier of the task instance."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/checkIns/{checkInId}",
+        "definition": {
+          "entityName": "CheckIn",
+          "schema": {
+            "$ref": "#/backend/entities/CheckIn"
+          },
+          "description": "Stores check-in records for collaborators.",
+          "params": [
+            {
+              "name": "checkInId",
+              "description": "The unique identifier of the check-in record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/feedbacks/{feedbackId}",
+        "definition": {
+          "entityName": "Feedback",
+          "schema": {
+            "$ref": "#/backend/entities/Feedback"
+          },
+          "description": "Stores feedback given from managers to collaborators.",
+          "params": [
+            {
+              "name": "feedbackId",
+              "description": "The unique identifier of the feedback record."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "This Firestore data structure is designed to support the \"Restaurante 360\" application, focusing on checklist management, process tracking, and user roles within a restaurant setting. It emphasizes Authorization Independence by denormalizing authorization data where necessary and Structural Segregation to simplify security rules.  \n\n**Authorization Independence:**  The structure achieves authorization independence primarily through path-based ownership for user-specific data (e.g., activity templates created by a user under `/users/{userId}/activityTemplates/{activityTemplateId}`) and by denormalizing the `createdBy` field (user ID) into the ActivityTemplate, Process, and ChecklistInstance documents. This allows rules to check the request user's ID against the `createdBy` field without needing expensive `get()` operations to verify ownership. For collaborative scenarios, such as access to Checklists, consider a Membership Map (`members: {uid1: 'role', uid2: 'role'}`) if needed, though the current design leans towards manager-driven checklists assigned to individuals.\n\n**QAPs (Rules are not Filters):**  \n*   **List Checklists by Date:**  The `/checklists` collection allows listing checklists.  Denormalizing `date` and `shift` into the ChecklistInstance allows efficient filtering. The `createdBy` field also supports filtering by manager.\n*   **List Tasks by Checklist:**  The `/checklists/{checklistId}/tasks` subcollection enables direct and efficient listing of tasks associated with a specific checklist.\n*   **Reports by User/Turn/Period:**  The design supports reports by user via the `assignedTo` field in `ChecklistInstance` and the `completedBy` field in `TaskInstance`. Reports by turn are supported via the `shift` field in `ChecklistInstance` and `CheckIn`. Reports by period are supported using date range queries on the `date` field in `ChecklistInstance` and the `createdAt` field across various entities.\n*   **Filtering by Status:**  Each entity (ChecklistInstance, TaskInstance) has a `status` field, enabling filtering by status directly in Firestore queries."
+  }
+}
