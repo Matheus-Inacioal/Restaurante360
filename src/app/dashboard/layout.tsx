@@ -58,6 +58,8 @@ export default function DashboardLayout({
     return 'Painel do Colaborador';
   };
 
+  const pageTitle = getDashboardTitle(currentUser.role);
+
   return (
     <SidebarProvider>
       <Sidebar side="left" variant="sidebar" collapsible="icon">
@@ -77,7 +79,7 @@ export default function DashboardLayout({
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <Header user={currentUser} title={getDashboardTitle(currentUser.role)} />
+        <Header user={currentUser} title={pageTitle} />
         {children}
       </SidebarInset>
     </SidebarProvider>
