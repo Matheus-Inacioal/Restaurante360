@@ -23,19 +23,27 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { mockActivityTemplates } from '@/lib/data';
 import type { ActivityTemplate } from '@/lib/types';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ActivityForm } from '@/components/manager/activity-form';
+import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
+
 
 export default function ActivitiesPage() {
-    const [activities, setActivities] = useState<ActivityTemplate[]>(mockActivityTemplates);
+    const { firestore } = useFirebase();
+    const { user } = useUser();
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [selectedActivity, setSelectedActivity] = useState<ActivityTemplate | undefined>(undefined);
 
+    const activitiesColRef = useMemoFirebase(() => {
+        if (!user || !firestore) return null;
+        return collection(firestore, `users/${user.uid}/activityTemplates`);
+    }, [user, firestore]);
+
+    const { data: activities, isLoading } = useCollection<ActivityTemplate>(activitiesColRef);
+
     const handleFormSuccess = () => {
-        // Here you would refetch the data from the server
-        // For now, we'll just close the sheet
         setIsSheetOpen(false);
         setSelectedActivity(undefined);
     };
@@ -95,7 +103,12 @@ export default function ActivitiesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activities.map((activity) => (
+              {isLoading && (
+                  <TableRow>
+                      <TableCell colSpan={6} className="text-center">Carregando atividades...</TableCell>
+                  </TableRow>
+              )}
+              {activities && activities.map((activity) => (
                 <TableRow key={activity.id}>
                   <TableCell className="font-medium">{activity.title}</TableCell>
                   <TableCell>

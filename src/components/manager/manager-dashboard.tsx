@@ -37,7 +37,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockChecklists } from '@/lib/data';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import type { ChecklistInstance, CheckIn } from '@/lib/types';
+
 
 const chartData = [
   { status: 'Concluído', total: Math.floor(Math.random() * 50) + 20, fill: 'hsl(var(--primary))' },
@@ -46,9 +49,32 @@ const chartData = [
 ];
 
 export function ManagerDashboard() {
-  const checklistsDoDia = mockChecklists.length;
-  const tarefasAtrasadas = 5; // Mock data
-  const checkinsDoDia = 2; // Mock data
+    const { firestore } = useFirebase();
+    const today = new Date().toISOString().split('T')[0];
+
+    const checklistsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'checklists'), where('date', '==', today));
+    }, [firestore, today]);
+
+    const checkinsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'checkIns'), where('date', '==', today));
+    }, [firestore, today]);
+
+    const recentChecklistsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'checklists'), orderBy('date', 'desc'), limit(5));
+    }, [firestore]);
+
+    const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
+    const { data: checkinsDoDiaData } = useCollection<CheckIn>(checkinsQuery);
+    const { data: recentChecklists } = useCollection<ChecklistInstance>(recentChecklistsQuery);
+
+    const checklistsDoDia = checklistsDoDiaData?.length || 0;
+    const checkinsDoDia = checkinsDoDiaData?.length || 0;
+
+    const tarefasAtrasadas = checklistsDoDiaData?.filter(c => c.status === 'open' || c.status === 'in_progress').length || 0;
 
   return (
     <div>
@@ -63,21 +89,21 @@ export function ManagerDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{checklistsDoDia}</div>
             <p className="text-xs text-muted-foreground">
-              +2.5% em relação a ontem
+              Total de checklists para hoje
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Tarefas Atrasadas
+              Pendentes / Em Progresso
             </CardTitle>
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{tarefasAtrasadas}</div>
             <p className="text-xs text-muted-foreground">
-              Ações necessárias para regularizar
+              Checklists que precisam de atenção
             </p>
           </CardContent>
         </Card>
@@ -147,7 +173,7 @@ export function ManagerDashboard() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {mockChecklists.slice(0, 5).map((checklist) => (
+                    {recentChecklists && recentChecklists.map((checklist) => (
                         <TableRow key={checklist.id}>
                             <TableCell>
                                 <div className="font-medium">{checklist.assignedTo}</div>

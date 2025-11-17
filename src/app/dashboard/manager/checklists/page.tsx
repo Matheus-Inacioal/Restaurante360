@@ -24,10 +24,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { mockChecklists } from '@/lib/data';
 import type { ChecklistInstance } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where } from 'firebase/firestore';
 
 const getStatusVariant = (status: ChecklistInstance['status']) => {
   switch (status) {
@@ -54,18 +55,29 @@ const getStatusLabel = (status: ChecklistInstance['status']) => {
 }
 
 const getProgress = (checklist: ChecklistInstance) => {
+    if (!checklist.tasks || checklist.tasks.length === 0) return 0;
     const totalTasks = checklist.tasks.length;
-    if (totalTasks === 0) return 0;
     const completedTasks = checklist.tasks.filter(t => t.status === 'done').length;
     return (completedTasks / totalTasks) * 100;
 }
 
 export default function ChecklistsPage() {
-    const [checklists, setChecklists] = useState<ChecklistInstance[]>(mockChecklists);
+    const { firestore } = useFirebase();
+    const [activeTab, setActiveTab] = useState('all');
+
+    const checklistsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        if (activeTab === 'all') {
+            return collection(firestore, 'checklists');
+        }
+        return query(collection(firestore, 'checklists'), where('status', '==', activeTab));
+    }, [firestore, activeTab]);
+
+    const { data: checklists, isLoading } = useCollection<ChecklistInstance>(checklistsQuery);
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-      <Tabs defaultValue="all">
+      <Tabs defaultValue="all" onValueChange={setActiveTab}>
         <div className="flex items-center">
           <TabsList>
             <TabsTrigger value="all">Todos</TabsTrigger>
@@ -94,7 +106,7 @@ export default function ChecklistsPage() {
             </DropdownMenu>
           </div>
         </div>
-        <TabsContent value="all">
+        <TabsContent value={activeTab}>
           <Card>
             <CardContent className="pt-6">
               <Table>
@@ -111,7 +123,12 @@ export default function ChecklistsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {checklists.map((checklist) => (
+                  {isLoading && (
+                      <TableRow>
+                          <TableCell colSpan={6} className="text-center">Carregando checklists...</TableCell>
+                      </TableRow>
+                  )}
+                  {checklists && checklists.map((checklist) => (
                     <TableRow key={checklist.id}>
                       <TableCell className="font-medium">
                           {checklist.processName || `Checklist Avulso`}

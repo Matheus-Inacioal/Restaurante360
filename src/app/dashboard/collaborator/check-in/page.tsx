@@ -12,21 +12,53 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { useFirebase, useUser } from '@/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
 export default function CheckInPage() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInTime, setCheckInTime] = useState('');
   const { toast } = useToast();
+  const { firestore } = useFirebase();
+  const { user } = useUser();
 
-  const handleCheckIn = () => {
+  const handleCheckIn = async () => {
+    if (!user || !firestore) {
+        toast({
+            variant: 'destructive',
+            title: 'Erro de autenticação',
+            description: 'Você precisa estar logado para fazer o check-in.'
+        });
+        return;
+    }
+
     const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    setIsCheckedIn(true);
-    setCheckInTime(time);
-    toast({
-      title: 'Check-in realizado com sucesso!',
-      description: `Seu turno foi iniciado às ${time}. Bom trabalho!`,
-      variant: 'default',
-    });
+    
+    try {
+        const checkInsCollection = collection(firestore, 'checkIns');
+        addDocumentNonBlocking(checkInsCollection, {
+            userId: user.uid,
+            date: new Date().toISOString().split('T')[0],
+            shift: 'Manhã', // This could be dynamic based on time
+            createdAt: serverTimestamp(),
+        });
+
+        setIsCheckedIn(true);
+        setCheckInTime(time);
+        toast({
+        title: 'Check-in realizado com sucesso!',
+        description: `Seu turno foi iniciado às ${time}. Bom trabalho!`,
+        variant: 'default',
+        });
+    } catch (error) {
+        console.error('Error performing check-in:', error);
+        toast({
+            variant: 'destructive',
+            title: 'Erro ao fazer check-in',
+            description: 'Não foi possível registrar seu check-in. Tente novamente.'
+        });
+    }
   };
 
   return (
@@ -60,7 +92,7 @@ export default function CheckInPage() {
             className="w-full"
             size="lg"
             onClick={handleCheckIn}
-            disabled={isCheckedIn}
+            disabled={isCheckedIn || !user}
           >
             {isCheckedIn ? 'Turno Iniciado' : 'Fazer Check-in Agora'}
           </Button>

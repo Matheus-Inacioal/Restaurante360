@@ -6,6 +6,9 @@ export type User = {
   email: string;
   role: UserRole;
   avatarUrl?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ActivityTemplate = {
@@ -17,6 +20,9 @@ export type ActivityTemplate = {
   isRecurring: boolean;
   requiresPhoto: boolean;
   status: 'active' | 'inactive';
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Process = {
@@ -25,6 +31,9 @@ export type Process = {
   description: string;
   activityIds: string[];
   isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type TaskStatus = 'pending' | 'done' | 'not_applicable';
@@ -49,8 +58,20 @@ export type ChecklistInstance = {
   id: string;
   date: string;
   shift: 'Manhã' | 'Tarde' | 'Noite';
-  assignedTo: string;
+  assignedTo: string; // Should be a User ID
   processName?: string;
+  processId?: string;
   status: ChecklistStatus;
   tasks: TaskInstance[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 };
+
+export type CheckIn = {
+    id: string;
+    userId: string;
+    date: string;
+    shift: string;
+    createdAt: string;
+}

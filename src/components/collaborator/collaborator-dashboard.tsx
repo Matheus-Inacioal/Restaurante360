@@ -20,18 +20,46 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockChecklists } from '@/lib/data';
 import Link from 'next/link';
+import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
+import { collection, query, where, limit } from 'firebase/firestore';
+import type { TaskInstance, ChecklistInstance } from '@/lib/types';
+import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { serverTimestamp } from 'firebase/firestore';
 
-const collaboratorTasks = mockChecklists.flatMap(c => c.tasks.map(t => ({...t, checklist: c})))
-    .filter(t => t.checklist.assignedTo.includes('Carlos') || t.checklist.assignedTo.includes('Beatriz'))
-    .slice(0, 4);
+interface EnrichedTask extends TaskInstance {
+    checklist?: ChecklistInstance;
+}
 
 export function CollaboratorDashboard() {
+  const { firestore } = useFirebase();
+  const { user } = useUser();
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const { toast } = useToast();
 
+  const checklistsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+        collection(firestore, 'checklists'), 
+        where('assignedTo', '==', user.uid),
+        limit(5) // Limit to recent checklists for dashboard
+    );
+  }, [firestore, user]);
+
+  const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
+
+  // This is a simplified way to get tasks. A real app might need a more complex query.
+  const collaboratorTasks: EnrichedTask[] = checklists?.flatMap(c => c.tasks?.map(t => ({...t, checklist: c})) || []).slice(0, 4) || [];
+
+
   const handleCheckIn = () => {
+    if (!user || !firestore) return;
+    addDocumentNonBlocking(collection(firestore, 'checkIns'), {
+        userId: user.uid,
+        date: new Date().toISOString().split('T')[0],
+        shift: 'Manhã', // This could be dynamic
+        createdAt: serverTimestamp(),
+    });
     setIsCheckedIn(true);
     toast({
       title: 'Check-in realizado!',
@@ -60,7 +88,7 @@ export function CollaboratorDashboard() {
           )}
         </CardContent>
         <CardFooter>
-          <Button className="w-full" onClick={handleCheckIn} disabled={isCheckedIn}>
+          <Button className="w-full" onClick={handleCheckIn} disabled={isCheckedIn || !user}>
             <LogIn className="mr-2 h-4 w-4" />
             {isCheckedIn ? 'Check-in Feito' : 'Fazer Check-in'}
           </Button>
@@ -89,6 +117,11 @@ export function CollaboratorDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {isLoadingChecklists && (
+                  <TableRow>
+                      <TableCell colSpan={3} className="text-center">Carregando tarefas...</TableCell>
+                  </TableRow>
+              )}
               {collaboratorTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell>
@@ -100,16 +133,18 @@ export function CollaboratorDashboard() {
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{task.title}</div>
-                    <div className="text-sm text-muted-foreground hidden md:inline">{task.checklist.processName}</div>
+                    <div className="text-sm text-muted-foreground hidden md:inline">{task.checklist?.processName}</div>
                   </TableCell>
                   <TableCell className="text-right">
-                    {task.status === 'done' ? (
+                    {task.status === 'done' && task.completedAt ? (
                       <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
                         <Clock className="h-4 w-4" />
-                        <span>{new Date(task.checklist.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{new Date(task.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     ) : (
-                       <Button variant="ghost" size="sm">Concluir</Button>
+                       <Button asChild variant="ghost" size="sm">
+                           <Link href="/dashboard/collaborator/tasks">Ver</Link>
+                       </Button>
                     )}
                   </TableCell>
                 </TableRow>

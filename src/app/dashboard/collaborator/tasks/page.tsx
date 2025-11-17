@@ -18,27 +18,49 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { mockChecklists } from '@/lib/data';
 import type { TaskInstance } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
+import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
+import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState<TaskInstance[]>(
-    mockChecklists.flatMap(c => c.tasks)
-  );
+  const { firestore } = useFirebase();
+  const { user } = useUser();
   const { toast } = useToast();
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<TaskInstance | null>(null);
 
-  const handleCompleteTask = (taskId: string) => {
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId ? { ...task, status: 'done', completedAt: new Date().toISOString() } : task
-      )
-    );
+  const checklistsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(collection(firestore, 'checklists'), where('assignedTo', '==', user.uid));
+  }, [firestore, user]);
+
+  const { data: checklists, isLoading: isLoadingChecklists } = useCollection(checklistsQuery);
+
+  const tasksQuery = useMemoFirebase(() => {
+    if (!firestore || !checklists || checklists.length === 0) return null;
+    // For simplicity, we'll query tasks from the first checklist.
+    // A more robust implementation might involve querying all tasks for all assigned checklists.
+    const checklistId = checklists[0].id;
+    return collection(firestore, `checklists/${checklistId}/tasks`);
+  }, [firestore, checklists]);
+
+  const { data: tasks, isLoading: isLoadingTasks } = useCollection<TaskInstance>(tasksQuery);
+  
+
+  const handleCompleteTask = (task: TaskInstance) => {
+    if (!firestore) return;
+    const taskRef = doc(firestore, `checklists/${task.checklistId}/tasks/${task.id}`);
+    updateDocumentNonBlocking(taskRef, {
+        status: 'done',
+        completedAt: new Date().toISOString(),
+        completedBy: user?.uid,
+    });
     toast({
       title: "Tarefa concluída!",
       description: "Bom trabalho!",
@@ -52,7 +74,9 @@ export default function TasksPage() {
 
   const handlePhotoUpload = () => {
     if (selectedTask) {
-        handleCompleteTask(selectedTask.id);
+        // Here you would handle the actual photo upload to Firebase Storage
+        // and get the URL. For now, we'll just mark the task as complete.
+        handleCompleteTask(selectedTask);
     }
     setIsPhotoUploadOpen(false);
     setSelectedTask(null);
@@ -61,6 +85,8 @@ export default function TasksPage() {
         description: "A tarefa foi concluída com a evidência fotográfica."
     });
   }
+
+  const isLoading = isLoadingChecklists || isLoadingTasks;
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -82,7 +108,12 @@ export default function TasksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tasks.map((task) => (
+              {isLoading && (
+                  <TableRow>
+                      <TableCell colSpan={4} className="text-center">Carregando tarefas...</TableCell>
+                  </TableRow>
+              )}
+              {tasks && tasks.map((task) => (
                 <TableRow key={task.id} className={task.status === 'done' ? 'bg-muted/50' : ''}>
                   <TableCell>
                     {task.status === 'done' ? (
@@ -106,7 +137,7 @@ export default function TasksPage() {
                               Anexar Foto
                           </Button>
                       ) : (
-                          <Button variant="default" size="sm" onClick={() => handleCompleteTask(task.id)}>
+                          <Button variant="default" size="sm" onClick={() => handleCompleteTask(task)}>
                               Concluir
                           </Button>
                       )

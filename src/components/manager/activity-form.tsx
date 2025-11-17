@@ -26,6 +26,10 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { ActivityTemplate } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { useFirebase, useUser } from '@/firebase';
+import { collection, serverTimestamp, doc } from 'firebase/firestore';
+import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 const formSchema = z.object({
   title: z.string().min(3, 'O título deve ter pelo menos 3 caracteres.'),
@@ -34,6 +38,7 @@ const formSchema = z.object({
   frequency: z.enum(['daily', 'weekly', 'monthly', 'on-demand']),
   isRecurring: z.boolean(),
   requiresPhoto: z.boolean(),
+  status: z.enum(['active', 'inactive']),
 });
 
 type ActivityFormValues = z.infer<typeof formSchema>;
@@ -45,25 +50,67 @@ interface ActivityFormProps {
 
 export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
   const { toast } = useToast();
+  const { firestore } = useFirebase();
+  const { user } = useUser();
+
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: activity || {
+    defaultValues: activity ? {
+        ...activity,
+        status: activity.status || 'active',
+    } : {
       title: '',
       description: '',
       category: 'Cozinha',
       frequency: 'daily',
       isRecurring: true,
       requiresPhoto: false,
+      status: 'active',
     },
   });
 
-  function onSubmit(values: ActivityFormValues) {
-    console.log(values);
-    toast({
-      title: `Atividade ${activity ? 'atualizada' : 'criada'}!`,
-      description: `A atividade "${values.title}" foi salva com sucesso.`,
-    });
-    onSuccess();
+  async function onSubmit(values: ActivityFormValues) {
+    if (!firestore || !user) {
+        toast({
+            variant: "destructive",
+            title: "Erro de autenticação",
+            description: "Não foi possível salvar a atividade."
+        });
+        return;
+    }
+    
+    try {
+        if (activity) {
+            // Update existing activity
+            const activityRef = doc(firestore, `users/${user.uid}/activityTemplates`, activity.id);
+            setDocumentNonBlocking(activityRef, {
+                ...values,
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+        } else {
+            // Create new activity
+            const activitiesCollection = collection(firestore, `users/${user.uid}/activityTemplates`);
+            addDocumentNonBlocking(activitiesCollection, {
+                ...values,
+                createdBy: user.uid,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+        }
+
+        toast({
+        title: `Atividade ${activity ? 'atualizada' : 'criada'}!`,
+        description: `A atividade "${values.title}" foi salva com sucesso.`,
+        });
+        onSuccess();
+    } catch (error) {
+        console.error("Error saving activity: ", error);
+        toast({
+            variant: "destructive",
+            title: "Erro ao salvar",
+            description: "Ocorreu um problema ao salvar a atividade."
+        })
+    }
   }
 
   return (
@@ -192,7 +239,9 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
         </div>
 
         <div className="flex justify-end">
-            <Button type="submit">{activity ? 'Salvar Alterações' : 'Criar Atividade'}</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? 'Salvando...' : (activity ? 'Salvar Alterações' : 'Criar Atividade')}
+            </Button>
         </div>
       </form>
     </Form>

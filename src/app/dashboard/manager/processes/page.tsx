@@ -23,11 +23,20 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { mockProcesses } from '@/lib/data';
 import type { Process } from '@/lib/types';
+import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
+
 
 export default function ProcessesPage() {
-    const [processes, setProcesses] = useState<Process[]>(mockProcesses);
+    const { firestore } = useFirebase();
+    
+    const processesColRef = useMemoFirebase(() =>
+        firestore ? collection(firestore, 'processes') : null,
+        [firestore]
+    );
+
+    const { data: processes, isLoading } = useCollection<Process>(processesColRef);
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -56,7 +65,12 @@ export default function ProcessesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {processes.map((process) => (
+              {isLoading && (
+                  <TableRow>
+                      <TableCell colSpan={4} className="text-center">Carregando processos...</TableCell>
+                  </TableRow>
+              )}
+              {processes && processes.map((process) => (
                 <TableRow key={process.id}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
