@@ -40,6 +40,7 @@ export function CollaboratorDashboard() {
 
   const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
+  // CRITICAL FIX: Added where clauses to secure the query.
   // This query now correctly filters for the logged-in user and today's date.
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
