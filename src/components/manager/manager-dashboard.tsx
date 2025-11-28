@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/table';
 import { useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import type { ChecklistInstance, CheckIn } from '@/lib/types';
+import type { ChecklistInstance } from '@/lib/types';
 import { useMemo } from 'react';
 
 
@@ -52,38 +52,23 @@ export function ManagerDashboard() {
         if (!firestore || !user) return null;
         return query(collection(firestore, 'checklists'), where('date', '==', today), where('createdBy', '==', user.uid));
     }, [firestore, today, user]);
-
-    const checkinsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        // This query needs to be valid. Let's assume we want to see check-ins related to checklists the manager created.
-        // A direct query on checkIns by createdBy of checklist isn't possible.
-        // For the dashboard card, simply counting all check-ins for the day is acceptable for now.
-        // Or we can filter client-side if we fetch all check-ins.
-        // Let's fetch all and show the total number. The security rules will allow this.
-        return query(collection(firestore, 'checkIns'), where('date', '==', today));
-    }, [firestore, today]);
-
+    
     const recentChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
         return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
     }, [firestore, user]);
 
     const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
-    const { data: checkinsDoDiaData } = useCollection<CheckIn>(checkinsQuery);
     const { data: recentChecklists } = useCollection<ChecklistInstance>(recentChecklistsQuery);
 
-    const checklistsDoDia = checklistsDoDiaData?.length || 0;
-    const checkinsDoDia = checkinsDoDiaData?.length || 0;
-
-    const tarefasAtrasadas = checklistsDoDiaData?.filter(c => c.status === 'open' || c.status === 'in_progress').length || 0;
-
-    const chartData = useMemo(() => {
+    const { checklistsDoDia, checkinsDoDia, tarefasAtrasadas, chartData } = useMemo(() => {
         if (!checklistsDoDiaData) {
-            return [
+            const emptyChartData = [
                 { status: 'Concluído', total: 0, fill: 'hsl(var(--primary))' },
                 { status: 'Em Progresso', total: 0, fill: 'hsl(var(--accent))' },
                 { status: 'Pendente', total: 0, fill: 'hsl(var(--muted-foreground))' },
             ];
+            return { checklistsDoDia: 0, checkinsDoDia: 0, tarefasAtrasadas: 0, chartData: emptyChartData };
         }
 
         const counts = checklistsDoDiaData.reduce((acc, checklist) => {
@@ -93,11 +78,22 @@ export function ManagerDashboard() {
             return acc;
         }, { completed: 0, in_progress: 0, open: 0 });
 
-        return [
+        const uniqueCheckinUsers = new Set(checklistsDoDiaData.map(c => c.assignedTo));
+
+        const newChartData = [
             { status: 'Concluído', total: counts.completed, fill: 'hsl(var(--primary))' },
             { status: 'Em Progresso', total: counts.in_progress, fill: 'hsl(var(--accent))' },
             { status: 'Pendente', total: counts.open, fill: 'hsl(var(--muted-foreground))' },
         ];
+        
+        const atrasadas = counts.in_progress + counts.open;
+
+        return {
+            checklistsDoDia: checklistsDoDiaData.length,
+            checkinsDoDia: uniqueCheckinUsers.size,
+            tarefasAtrasadas: atrasadas,
+            chartData: newChartData,
+        };
     }, [checklistsDoDiaData]);
 
 
@@ -140,7 +136,7 @@ export function ManagerDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{checkinsDoDia}</div>
             <p className="text-xs text-muted-foreground">
-              Colaboradores no turno atual
+              Colaboradores com tarefas hoje
             </p>
           </CardContent>
         </Card>
