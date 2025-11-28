@@ -50,7 +50,7 @@ export function ManagerDashboard() {
 
     const checklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
-        return query(collection(firestore, 'checklists'), where('date', '==', today), where('createdBy', '==', user.uid));
+        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), where('date', '==', today));
     }, [firestore, today, user]);
     
     const recentChecklistsQuery = useMemoFirebase(() => {
