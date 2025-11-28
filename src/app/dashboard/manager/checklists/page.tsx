@@ -69,15 +69,13 @@ export default function ChecklistsPage() {
     const checklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
 
-        const baseQuery = collection(firestore, 'checklists');
-        let finalQuery;
-
+        const baseQuery = query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid));
+        
         if (activeTab === 'all') {
-            finalQuery = query(baseQuery, where('createdBy', '==', user.uid));
-        } else {
-            finalQuery = query(baseQuery, where('createdBy', '==', user.uid), where('status', '==', activeTab));
+            return baseQuery;
         }
-        return finalQuery;
+        
+        return query(baseQuery, where('status', '==', activeTab));
 
     }, [firestore, user, activeTab]);
 
