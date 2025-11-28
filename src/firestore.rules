@@ -82,9 +82,11 @@ service cloud.firestore {
         // The application's queries MUST enforce that users only see their own data.
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
-        allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+        // Allow update if the user is the creator (manager) OR the assignee (collaborator)
+        allow update: if isSignedIn() && (resource.data.createdBy == request.auth.uid || resource.data.assignedTo == request.auth.uid);
         allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
+
 
     match /checklists/{checklistId}/tasks/{taskId} {
       // Allow read/write if the user has read access to the parent checklist.
