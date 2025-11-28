@@ -24,7 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { ChecklistInstance, ChecklistStatus } from '@/lib/types';
+import type { ChecklistInstance, ChecklistStatus, User } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
@@ -66,22 +66,37 @@ export default function ChecklistsPage() {
     const { user, isUserLoading } = useUser();
     const [activeTab, setActiveTab] = useState<ChecklistStatus | 'all'>('all');
 
-    // Single, secure query to get all checklists for the current manager.
     const allChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
         return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid));
     }, [firestore, user, isUserLoading]);
 
-    const { data: allChecklists, isLoading } = useCollection<ChecklistInstance>(allChecklistsQuery);
+    const usersQuery = useMemoFirebase(() => 
+        firestore ? collection(firestore, 'users') : null,
+        [firestore]
+    );
 
-    // Filter checklists on the client-side based on the active tab.
+    const { data: allChecklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(allChecklistsQuery);
+    const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
+
+    const usersMap = useMemo(() => {
+        if (!users) return new Map();
+        return new Map(users.map(u => [u.id, u.name]));
+    }, [users]);
+
     const filteredChecklists = useMemo(() => {
         if (!allChecklists) return [];
+        const checklistsWithUserNames = allChecklists.map(checklist => ({
+            ...checklist,
+            assignedToName: usersMap.get(checklist.assignedTo) || checklist.assignedTo
+        }));
         if (activeTab === 'all') {
-            return allChecklists;
+            return checklistsWithUserNames;
         }
-        return allChecklists.filter(checklist => checklist.status === activeTab);
-    }, [allChecklists, activeTab]);
+        return checklistsWithUserNames.filter(checklist => checklist.status === activeTab);
+    }, [allChecklists, activeTab, usersMap]);
+
+    const isLoading = isLoadingChecklists || isLoadingUsers;
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -146,7 +161,7 @@ export default function ChecklistsPage() {
                       <TableCell className="font-medium">
                           {checklist.processName || `Checklist Avulso`}
                       </TableCell>
-                      <TableCell>{checklist.assignedTo}</TableCell>
+                      <TableCell>{(checklist as any).assignedToName}</TableCell>
                       <TableCell>{checklist.shift}</TableCell>
                       <TableCell>
                           <div className="flex items-center gap-2">
