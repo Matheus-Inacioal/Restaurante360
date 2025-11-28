@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import type { ActivityTemplate } from '@/lib/types';
+import type { ActivityTemplate, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useFirebase, useUser } from '@/firebase';
 import { collection, serverTimestamp, doc } from 'firebase/firestore';
@@ -35,6 +35,7 @@ const formSchema = z.object({
   title: z.string().min(3, 'O título deve ter pelo menos 3 caracteres.'),
   description: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.'),
   category: z.enum(['Higiene', 'Cozinha', 'Atendimento', 'Segurança', 'Outro']),
+  assignedRole: z.enum(['gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']).optional(),
   frequency: z.enum(['daily', 'weekly', 'monthly', 'on-demand']),
   isRecurring: z.boolean(),
   requiresPhoto: z.boolean(),
@@ -66,6 +67,7 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
       isRecurring: true,
       requiresPhoto: false,
       status: 'active',
+      assignedRole: 'cozinha',
     },
   });
 
@@ -148,24 +150,26 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <FormField
             control={form.control}
-            name="category"
+            name="assignedRole"
             render={({ field }) => (
                 <FormItem>
-                <FormLabel>Categoria</FormLabel>
+                <FormLabel>Direcionar para Função</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                     <SelectTrigger>
-                        <SelectValue placeholder="Selecione uma categoria" />
+                        <SelectValue placeholder="Selecione uma função" />
                     </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                        <SelectItem value="Higiene">Higiene</SelectItem>
-                        <SelectItem value="Cozinha">Cozinha</SelectItem>
-                        <SelectItem value="Atendimento">Atendimento</SelectItem>
-                        <SelectItem value="Segurança">Segurança</SelectItem>
-                        <SelectItem value="Outro">Outro</SelectItem>
+                        <SelectItem value="gestor">Gestor</SelectItem>
+                        <SelectItem value="bar">Bar</SelectItem>
+                        <SelectItem value="pia">Pia</SelectItem>
+                        <SelectItem value="cozinha">Cozinha</SelectItem>
+                        <SelectItem value="producao">Produção</SelectItem>
+                        <SelectItem value="garcon">Garçom</SelectItem>
                     </SelectContent>
                 </Select>
+                <FormDescription>Esta atividade será atribuída a este perfil.</FormDescription>
                 <FormMessage />
                 </FormItem>
             )}

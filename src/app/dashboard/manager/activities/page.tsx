@@ -23,12 +23,22 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { ActivityTemplate } from '@/lib/types';
+import type { ActivityTemplate, UserRole } from '@/lib/types';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ActivityForm } from '@/components/manager/activity-form';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
 
+const roleLabels: Record<UserRole, string> = {
+    manager: 'Gestor',
+    collaborator: 'Colaborador',
+    gestor: 'Gestor',
+    bar: 'Bar',
+    pia: 'Pia',
+    cozinha: 'Cozinha',
+    producao: 'Produção',
+    garcon: 'Garçom',
+};
 
 export default function ActivitiesPage() {
     const { firestore } = useFirebase();
@@ -93,7 +103,7 @@ export default function ActivitiesPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Título</TableHead>
-                <TableHead>Categoria</TableHead>
+                <TableHead>Função Atribuída</TableHead>
                 <TableHead>Frequência</TableHead>
                 <TableHead>Exige Foto</TableHead>
                 <TableHead>Status</TableHead>
@@ -112,7 +122,11 @@ export default function ActivitiesPage() {
                 <TableRow key={activity.id}>
                   <TableCell className="font-medium">{activity.title}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{activity.category}</Badge>
+                    {activity.assignedRole ? (
+                      <Badge variant="secondary">{roleLabels[activity.assignedRole] || activity.assignedRole}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
                   </TableCell>
                   <TableCell className="capitalize">{activity.frequency}</TableCell>
                   <TableCell>{activity.requiresPhoto ? 'Sim' : 'Não'}</TableCell>

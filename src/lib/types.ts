@@ -17,6 +17,7 @@ export type ActivityTemplate = {
   description: string;
   category: 'Higiene' | 'Cozinha' | 'Atendimento' | 'Segurança' | 'Outro';
   frequency: 'daily' | 'weekly' | 'monthly' | 'on-demand';
+  assignedRole?: UserRole;
   isRecurring: boolean;
   requiresPhoto: boolean;
   status: 'active' | 'inactive';
