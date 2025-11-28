@@ -131,7 +131,7 @@ service cloud.firestore {
      */
     match /checklists/{checklistId} {
         allow get: if isSignedIn() && (resource.data.createdBy == request.auth.uid || resource.data.assignedTo == request.auth.uid);
-        allow list: if isSignedIn() && (request.query.filters.createdBy == request.auth.uid || request.query.filters.assignedTo == request.auth.uid);
+        allow list: if isSignedIn() && (request.query.filters == null || request.query.filters.createdBy == request.auth.uid || request.query.filters.assignedTo == request.auth.uid);
         allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
         allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
         allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
