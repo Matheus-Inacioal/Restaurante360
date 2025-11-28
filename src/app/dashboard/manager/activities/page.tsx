@@ -74,20 +74,20 @@ export default function OneOffTasksPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Tarefas Pontuais</h2>
           <p className="text-muted-foreground">
-            Crie e atribua tarefas pontuais diretamente para um colaborador.
+            Crie e gerencie os modelos de tarefas que podem ser usados em rotinas.
           </p>
         </div>
         <Button onClick={handleAddNew}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Nova Tarefa Pontual
+          <PlusCircle className="mr-2 h-4 w-4" /> Novo Modelo de Tarefa
         </Button>
       </div>
 
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetContent className="sm:max-w-2xl w-[95vw] overflow-y-auto">
               <SheetHeader>
-              <SheetTitle className="font-headline text-2xl">{selectedActivity ? 'Editar Tarefa' : 'Criar Nova Tarefa Pontual'}</SheetTitle>
+              <SheetTitle className="font-headline text-2xl">{selectedActivity ? 'Editar Modelo de Tarefa' : 'Criar Novo Modelo de Tarefa'}</SheetTitle>
               <SheetDescription>
-                  {selectedActivity ? 'Altere os detalhes desta tarefa.' : 'Preencha os detalhes para criar e atribuir uma tarefa pontual.'}
+                  {selectedActivity ? 'Altere os detalhes deste modelo.' : 'Preencha os detalhes para criar um novo modelo de tarefa reutilizável.'}
               </SheetDescription>
               </SheetHeader>
               <div className="mt-8">
