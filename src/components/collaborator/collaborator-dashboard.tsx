@@ -29,7 +29,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 interface EnrichedTask extends TaskInstance {
-    checklist?: ChecklistInstance;
+    processName?: string;
 }
 
 export function CollaboratorDashboard() {
@@ -53,8 +53,10 @@ export function CollaboratorDashboard() {
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
 
   const collaboratorTasks: EnrichedTask[] = useMemo(() => {
-      if (!checklists) return [];
-      return checklists.flatMap(c => c.tasks?.map(t => ({...t, checklist: c})) || []).slice(0, 4);
+    if (!checklists) return [];
+    return checklists
+      .flatMap(c => (c.tasks || []).map(t => ({...t, processName: c.processName})))
+      .slice(0, 4);
   }, [checklists]);
 
 
@@ -128,7 +130,12 @@ export function CollaboratorDashboard() {
                       <TableCell colSpan={3} className="text-center">Carregando tarefas...</TableCell>
                   </TableRow>
               )}
-              {collaboratorTasks.map((task) => (
+              {!isLoadingChecklists && collaboratorTasks.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center h-24">Você não tem tarefas para hoje.</TableCell>
+                </TableRow>
+              )}
+              {!isLoadingChecklists && collaboratorTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell>
                     {task.status === 'done' ? (
@@ -139,7 +146,7 @@ export function CollaboratorDashboard() {
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{task.title}</div>
-                    <div className="text-sm text-muted-foreground hidden md:inline">{task.checklist?.processName}</div>
+                    <div className="text-sm text-muted-foreground hidden md:inline">{task.processName}</div>
                   </TableCell>
                   <TableCell className="text-right">
                     {task.status === 'done' && task.completedAt ? (
