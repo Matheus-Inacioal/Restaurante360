@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LogIn, CheckCircle2, Circle, Clock } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import {
   Table,
@@ -22,10 +22,11 @@ import {
 } from '@/components/ui/table';
 import Link from 'next/link';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, limit } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import type { TaskInstance, ChecklistInstance } from '@/lib/types';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { serverTimestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
 
 interface EnrichedTask extends TaskInstance {
     checklist?: ChecklistInstance;
@@ -39,17 +40,21 @@ export function CollaboratorDashboard() {
 
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
     return query(
         collection(firestore, 'checklists'), 
         where('assignedTo', '==', user.uid),
-        limit(5) // Limit to recent checklists for dashboard
+        where('date', '==', todayStr),
+        orderBy('createdAt', 'desc')
     );
   }, [firestore, user]);
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
 
-  // This is a simplified way to get tasks. A real app might need a more complex query.
-  const collaboratorTasks: EnrichedTask[] = checklists?.flatMap(c => c.tasks?.map(t => ({...t, checklist: c})) || []).slice(0, 4) || [];
+  const collaboratorTasks: EnrichedTask[] = useMemo(() => {
+      if (!checklists) return [];
+      return checklists.flatMap(c => c.tasks?.map(t => ({...t, checklist: c})) || []).slice(0, 4);
+  }, [checklists]);
 
 
   const handleCheckIn = () => {
