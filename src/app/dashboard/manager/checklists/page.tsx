@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -64,14 +63,14 @@ const getProgress = (checklist: ChecklistInstance) => {
 
 export default function ChecklistsPage() {
     const { firestore } = useFirebase();
-    const { user } = useUser();
+    const { user, isUserLoading } = useUser();
     const [activeTab, setActiveTab] = useState<ChecklistStatus | 'all'>('all');
 
     // Single, secure query to get all checklists for the current manager.
     const allChecklistsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore || isUserLoading || !user) return null;
         return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid));
-    }, [firestore, user]);
+    }, [firestore, user, isUserLoading]);
 
     const { data: allChecklists, isLoading } = useCollection<ChecklistInstance>(allChecklistsQuery);
 
