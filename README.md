@@ -1,50 +1,133 @@
-# restaurante360 - Sistema de Gestão Operacional
+# 🍽️ Restaurante360 — Sistema de Gestão Operacional Inteligente
 
-## Visão Geral
+O **Restaurante360** é uma plataforma completa para gestão operacional de restaurantes, bares e estabelecimentos do setor de alimentos e bebidas.  
+Seu objetivo é transformar rotinas complexas em fluxos simples e eficientes, garantindo padronização, qualidade e acompanhamento em tempo real.
 
-O **restaurante360** é um sistema de gestão operacional completo, projetado especificamente para as necessidades de restaurantes, bares e outros estabelecimentos do setor de alimentos e bebidas. A plataforma centraliza e otimiza as rotinas diárias, garantindo a padronização dos processos, o acompanhamento da equipe e a análise de performance em tempo real.
-
-O objetivo principal é transformar a complexidade da gestão diária em um fluxo de trabalho simples, digital e eficiente, permitindo que os gestores se concentrem na qualidade do serviço e na satisfação do cliente.
-
----
-
-## Funcionalidades Principais
-
-O sistema é dividido em dois painéis principais, cada um com funcionalidades específicas para o perfil do usuário:
-
-### 1. Painel do Gestor (`Manager`)
-
-O gestor tem acesso total às ferramentas de configuração, acompanhamento e análise.
-
-*   **Dashboard Geral:** Uma visão panorâmica do status operacional do dia, incluindo o progresso dos checklists, tarefas pendentes e check-ins da equipe.
-*   **Gestão de Atividades:** Permite criar e gerenciar "modelos de atividade", que são as tarefas individuais que compõem os processos (ex: "Limpar chapa", "Verificar estoque de bebidas").
-*   **Gestão de Processos:** Agrupa atividades em sequências lógicas, como "Rotina de Abertura", "Limpeza de Encerramento", etc.
-*   **Gestão de Checklists:** Acompanha em tempo real o status de todos os checklists gerados, visualizando o progresso, quem está responsável e o turno.
-*   **Gestão de Usuários:** Cadastra novos membros da equipe, atribuindo funções específicas (gestor, bar, pia, cozinha, produção, garçom) que determinam seus acessos e permissões.
-*   **Relatórios de Performance:** Ferramentas visuais com gráficos para analisar a conformidade das tarefas por colaborador e a distribuição do status dos checklists ao longo do tempo.
-
-### 2. Painel do Colaborador (`Collaborator`)
-
-O colaborador tem uma interface focada na execução de suas responsabilidades diárias.
-
-*   **Meu Painel:** Um resumo rápido do status do seu turno e acesso rápido às tarefas pendentes.
-*   **Check-in:** Funcionalidade para registrar o início do turno de trabalho.
-*   **Minhas Tarefas:** Lista de todas as tarefas atribuídas para o dia. O colaborador pode marcar as tarefas como concluídas e, se necessário, anexar uma foto como evidência da execução.
+A plataforma melhora o desempenho da equipe, organiza processos e fornece dados estratégicos para tomada de decisão.
 
 ---
 
-## Tecnologia Utilizada
+## 🚀 Visão Geral
 
-O projeto foi construído com uma stack moderna e robusta, focada em performance, escalabilidade e uma excelente experiência de desenvolvimento.
+O sistema centraliza todas as rotinas operacionais do restaurante, como:
 
-*   **Framework:** **Next.js (com App Router)** - Para renderização otimizada no servidor (SSR), alta performance e uma estrutura de projeto organizada.
-*   **Linguagem:** **TypeScript** - Para garantir a segurança dos tipos e a manutenibilidade do código.
-*   **Backend e Banco de Dados:** **Firebase**
-    *   **Firestore:** Como banco de dados NoSQL em tempo real para armazenar todos os dados da aplicação (usuários, tarefas, checklists, etc.).
-    *   **Firebase Authentication:** Para gerenciar o login, cadastro e a segurança de acesso dos usuários.
-*   **UI (Interface do Usuário):**
-    *   **ShadCN UI:** Biblioteca de componentes acessíveis e customizáveis.
-    *   **Tailwind CSS:** Para estilização rápida e consistente, utilizando um sistema de design baseado em utilitários.
-*   **Gerenciamento de Estado:** Hooks nativos do React (`useState`, `useEffect`, `useContext`) combinados com a reatividade em tempo real do Firebase.
-*   **Formulários:** `react-hook-form` para gerenciamento eficiente e performático de formulários, com validação através do `zod`.
-*   **Visualização de Dados:** `Recharts` para a criação dos gráficos interativos na página de relatórios.
+- Checklists diários, semanais e mensais  
+- Processos internos estruturados  
+- Controle de tarefas com fotos de evidência  
+- Check-in por turno  
+- Feedbacks da gestão  
+- Relatórios visuais de performance
+
+A plataforma é dividida em dois painéis principais: **Gestor** e **Colaborador**.
+
+---
+
+# 👨‍💼 1. Painel do Gestor
+
+Interface completa para supervisão e tomada de decisão.
+
+### 📊 Dashboard Geral
+- Status dos checklists  
+- Progresso das tarefas  
+- Colaboradores ativos  
+- Acompanhamento por setor
+
+### 🛠 Gestão de Atividades
+- Criação e edição de tarefas  
+- Configuração de frequência e recorrência  
+- Indicação de tarefas com foto obrigatória  
+
+### 📚 Gestão de Processos
+- Agrupamento de tarefas em fluxos operacionais  
+- Exemplos: Abertura, Produção, Fechamento  
+
+### 📋 Gestão de Checklists
+- Acompanhamento em tempo real  
+- Progresso por colaborador  
+- Evidências enviadas  
+
+### 👥 Gestão de Usuários
+- Cadastro de colaboradores  
+- Definição de funções e permissões  
+
+### 📈 Relatórios de Performance
+- Gráficos interativos  
+- Conformidade por colaborador  
+- Histórico por período  
+
+---
+
+# 👨‍🔧 2. Painel do Colaborador
+
+Interface objetiva para execução de tarefas.
+
+### 🏁 Meu Painel
+- Resumo do turno  
+- Atalhos para tarefas do dia  
+
+### 🕒 Check-in
+- Registro do início do turno com data e hora  
+
+### 📌 Minhas Tarefas
+- Lista de atividades do dia  
+- Tick de conclusão  
+- Upload de fotos como evidência  
+- Visualização de feedbacks  
+
+---
+
+# 🧰 Tecnologias Utilizadas
+
+## ⚙️ Framework Principal
+- **Next.js (App Router)** – SSR, performance e estrutura moderna  
+
+## 📝 Linguagem
+- **TypeScript** – segurança, organização e produtividade  
+
+## 🔥 Backend e Banco de Dados — Firebase
+- **Firestore** (NoSQL, tempo real)  
+- **Firebase Authentication** (gestão de acesso)  
+- **Firebase Storage** (fotos de evidência)  
+- **Hosting / Cloud Functions** (opcional)  
+
+## 🎨 UI / UX
+- **ShadCN UI** – componentes acessíveis e customizáveis  
+- **Tailwind CSS** – estilização ágil e padronizada  
+
+## 🧠 Gerenciamento de Estado
+- Hooks nativos (useState, useEffect, useContext)  
+- Reatividade com Firestore  
+
+## 📝 Formulários
+- **react-hook-form**  
+- Validação com **zod**  
+
+## 📊 Visualização de Dados
+- **Recharts** – gráficos profissionais e responsivos  
+
+---
+
+# 🗂️ Arquitetura do Projeto
+
+A estrutura do Restaurante360 segue uma arquitetura modular baseada no App Router do Next.js, organizada para escalar e manter o código limpo
+
+---
+
+# 🎯 Objetivo do Projeto
+
+- Melhorar produtividade  
+- Garantir padrão de qualidade  
+- Facilitar auditoria  
+- Digitalizar rotinas operacionais  
+- Reduzir erros e retrabalho  
+- Tornar o fluxo do restaurante mais inteligente e escalável  
+
+---
+
+# 📬 Contato
+
+**Autor:** Matheus Inácio de Almeida Arruda  
+**E-mail:** malmeidaarruda2@gmail.com  
+
+---
+
