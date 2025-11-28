@@ -49,7 +49,7 @@ export type TaskInstance = {
   status: TaskStatus;
   completedAt?: string;
   completedBy?: string;
-  photoUrl?: string;
+  photoUrls?: string[];
   feedback?: string;
 };
 

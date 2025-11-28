@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { Camera, CheckCircle2, Circle, Clock, Paperclip } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Camera, CheckCircle2, Circle, Clock, Paperclip, Upload, Video, X, CameraIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -24,9 +24,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { collection, query, where, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import Image from 'next/image';
 
 interface EnrichedTask extends TaskInstance {
     checklistId: string;
@@ -38,6 +39,12 @@ export default function TasksPage() {
   const { toast } = useToast();
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<EnrichedTask | null>(null);
+  
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -53,52 +60,90 @@ export default function TasksPage() {
   
   const allTasks: EnrichedTask[] = useMemo(() => {
       if (!checklists) return [];
-      return checklists.flatMap(checklist => 
-          (checklist.tasks || []).map(task => ({
-              ...task,
-              checklistId: checklist.id,
-          }))
-      );
+      // Flat map and sort: pending tasks first, then by title
+      return checklists
+        .flatMap(checklist => 
+            (checklist.tasks || []).map(task => ({
+                ...task,
+                checklistId: checklist.id,
+            }))
+        )
+        .sort((a, b) => {
+            if (a.status === 'done' && b.status !== 'done') return 1;
+            if (a.status !== 'done' && b.status === 'done') return -1;
+            return a.title.localeCompare(b.title);
+        });
   }, [checklists]);
+  
+  // Effect to handle camera stream
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    
+    const getCameraPermission = async () => {
+      if (!isPhotoUploadOpen) return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        setHasCameraPermission(false);
+        toast({
+          variant: 'destructive',
+          title: 'Acesso à Câmera Negado',
+          description: 'Por favor, habilite a permissão de câmera no seu navegador.',
+        });
+      }
+    };
+
+    getCameraPermission();
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isPhotoUploadOpen, toast]);
 
 
-  const handleCompleteTask = async (task: EnrichedTask) => {
+  const handleCompleteTask = async (task: EnrichedTask, photoUrls: string[] = []) => {
     if (!firestore || !user || !checklists) return;
 
     const checklist = checklists.find(c => c.id === task.checklistId);
     if (!checklist) return;
-
-    const taskToUpdate = checklist.tasks?.find(t => t.id === task.id);
-    if (!taskToUpdate) return;
-    
-    const updatedTask = {
-      ...taskToUpdate,
-      status: 'done' as const,
-      completedAt: new Date().toISOString(),
-      completedBy: user.uid
-    };
     
     const checklistRef = doc(firestore, 'checklists', task.checklistId);
 
     try {
-        const newTasks = (checklist.tasks || []).map(t => t.id === task.id ? updatedTask : t);
-        const allTasksCompleted = newTasks.every(t => t.status === 'done');
-        
-        const updatePayload: { tasks: any[], status?: 'completed', in_progress?: 'in_progress' } = {
-            tasks: newTasks
-        };
+        const updatedTasks = (checklist.tasks || []).map(t => {
+            if (t.id === task.id) {
+                return {
+                    ...t,
+                    status: 'done' as const,
+                    completedAt: new Date().toISOString(),
+                    completedBy: user.uid,
+                    photoUrls: photoUrls,
+                };
+            }
+            return t;
+        });
 
+        const updatePayload: any = { tasks: updatedTasks };
+        
+        const allTasksCompleted = updatedTasks.every(t => t.status === 'done');
         if (allTasksCompleted) {
             updatePayload.status = 'completed';
-        } else {
-            updatePayload.in_progress = 'in_progress';
+        } else if(updatedTasks.some(t => t.status === 'done')){
+            updatePayload.status = 'in_progress';
         }
 
         await updateDoc(checklistRef, updatePayload);
 
         toast({
             title: "Tarefa concluída!",
-            description: allTasksCompleted ? "Checklist finalizado!" : "Bom trabalho!",
+            description: allTasksCompleted ? "Checklist finalizado! Parabéns!" : "Bom trabalho, continue assim!",
         });
     } catch (error) {
         console.error("Error completing task: ", error);
@@ -112,21 +157,44 @@ export default function TasksPage() {
   
   const handleOpenPhotoUpload = (task: EnrichedTask) => {
     setSelectedTask(task);
+    setAttachedImages([]);
     setIsPhotoUploadOpen(true);
   }
 
-  const handlePhotoUpload = () => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+        const files = Array.from(event.target.files);
+        const dataUrls = files.map(file => URL.createObjectURL(file));
+        setAttachedImages(prev => [...prev, ...dataUrls]);
+    }
+  };
+
+  const handleCaptureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+        const dataUrl = canvas.toDataURL('image/png');
+        setAttachedImages(prev => [...prev, dataUrl]);
+    }
+  }
+
+  const removeImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  }
+
+  const handlePhotoUploadAndComplete = () => {
     if (selectedTask) {
-        // Here you would handle the actual photo upload to Firebase Storage
-        // and get the URL. For now, we'll just mark the task as complete.
-        handleCompleteTask(selectedTask);
+        // In a real app, you would upload `attachedImages` to Firebase Storage
+        // and get back an array of URLs to pass to handleCompleteTask.
+        // For this mock, we just pass the local blob/data URLs.
+        handleCompleteTask(selectedTask, attachedImages);
     }
     setIsPhotoUploadOpen(false);
     setSelectedTask(null);
-    toast({
-        title: "Foto enviada!",
-        description: "A tarefa foi concluída com a evidência fotográfica."
-    });
   }
 
   const isLoading = isLoadingChecklists;
@@ -199,29 +267,62 @@ export default function TasksPage() {
       </Card>
 
       <Dialog open={isPhotoUploadOpen} onOpenChange={setIsPhotoUploadOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-xl">
               <DialogHeader>
-              <DialogTitle>Anexar Foto de Evidência</DialogTitle>
-              <DialogDescription>
-                  Para a tarefa "{selectedTask?.title}", é necessário uma foto para concluir.
-              </DialogDescription>
+                  <DialogTitle>Anexar Evidência(s)</DialogTitle>
+                  <DialogDescription>
+                      Para a tarefa "{selectedTask?.title}", anexe uma ou mais fotos ou tire uma na hora.
+                  </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                  <div className="grid w-full max-w-sm items-center gap-1.5">
-                      <Label htmlFor="picture">Foto</Label>
-                      <Input id="picture" type="file" accept="image/*" />
+              <Tabs defaultValue="upload">
+                  <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" />Anexar Arquivo</TabsTrigger>
+                      <TabsTrigger value="camera"><Video className="mr-2 h-4 w-4" />Tirar Foto</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="upload" className="py-4">
+                      <div className="grid w-full items-center gap-1.5">
+                          <Label htmlFor="picture">Fotos</Label>
+                          <Input id="picture" type="file" accept="image/*" multiple onChange={handleFileChange} ref={fileInputRef} />
+                          <p className="text-sm text-muted-foreground">Você pode selecionar múltiplos arquivos.</p>
+                      </div>
+                  </TabsContent>
+                  <TabsContent value="camera" className="py-4">
+                      <div className="relative aspect-video bg-muted rounded-md flex items-center justify-center overflow-hidden">
+                          <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                          {hasCameraPermission === false && <p className="text-destructive-foreground">Câmera indisponível</p>}
+                          <canvas ref={canvasRef} className="hidden" />
+                      </div>
+                      <Button onClick={handleCaptureImage} disabled={!hasCameraPermission} className="w-full mt-2">
+                          <CameraIcon className="mr-2 h-4 w-4" /> Capturar Foto
+                      </Button>
+                  </TabsContent>
+              </Tabs>
+              
+              {attachedImages.length > 0 && (
+                  <div>
+                      <h4 className="font-medium mb-2">Imagens Anexadas:</h4>
+                      <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                          {attachedImages.map((imgSrc, index) => (
+                              <div key={index} className="relative aspect-square">
+                                  <Image src={imgSrc} alt={`Evidência ${index + 1}`} layout="fill" objectFit="cover" className="rounded-md" />
+                                  <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 z-10" onClick={() => removeImage(index)}>
+                                      <X className="h-4 w-4" />
+                                  </Button>
+                              </div>
+                          ))}
+                      </div>
                   </div>
-              </div>
+              )}
+
               <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsPhotoUploadOpen(false)}>Cancelar</Button>
-              <Button type="submit" onClick={handlePhotoUpload}>
-                  <Paperclip className="mr-2 h-4 w-4" />
-                  Enviar e Concluir
-              </Button>
+                  <Button type="button" variant="outline" onClick={() => setIsPhotoUploadOpen(false)}>Cancelar</Button>
+                  <Button type="submit" onClick={handlePhotoUploadAndComplete} disabled={attachedImages.length === 0}>
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      Enviar e Concluir
+                  </Button>
               </DialogFooter>
           </DialogContent>
       </Dialog>
-
     </main>
   );
 }
