@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { format } from 'date-fns';
 
 interface EnrichedTask extends TaskInstance {
     checklistId: string;
@@ -40,7 +41,12 @@ export default function TasksPage() {
 
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return query(collection(firestore, 'checklists'), where('assignedTo', '==', user.uid));
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    return query(
+      collection(firestore, 'checklists'), 
+      where('assignedTo', '==', user.uid),
+      where('date', '==', todayStr)
+    );
   }, [firestore, user]);
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
