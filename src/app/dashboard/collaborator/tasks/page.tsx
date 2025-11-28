@@ -304,7 +304,7 @@ export default function TasksPage() {
                       <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
                           {attachedImages.map((imgSrc, index) => (
                               <div key={index} className="relative aspect-square">
-                                  <Image src={imgSrc} alt={`Evidência ${index + 1}`} layout="fill" objectFit="cover" className="rounded-md" />
+                                  <Image src={imgSrc} alt={`Evidência ${index + 1}`} fill style={{ objectFit: 'cover' }} className="rounded-md" />
                                   <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 z-10" onClick={() => removeImage(index)}>
                                       <X className="h-4 w-4" />
                                   </Button>
@@ -326,3 +326,5 @@ export default function TasksPage() {
     </main>
   );
 }
+
+    
