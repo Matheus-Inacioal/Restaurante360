@@ -48,7 +48,7 @@ const managerNavItems: NavItem[] = [
     label: 'Gestão',
     icon: Settings,
     children: [
-      { href: '/dashboard/manager/activities', label: 'Tarefas Avulsas', icon: ClipboardCheck },
+      { href: '/dashboard/manager/activities', label: 'Tarefas Pontuais', icon: ClipboardCheck },
       { href: '/dashboard/manager/processes', label: 'Rotinas', icon: Workflow },
       { href: '/dashboard/manager/users', label: 'Usuários', icon: Users },
     ],

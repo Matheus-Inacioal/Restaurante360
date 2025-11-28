@@ -103,7 +103,7 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
             date: format(values.date, 'yyyy-MM-dd'),
             shift: values.shift,
             assignedTo: values.assignedTo,
-            processName: `Tarefa Avulsa: ${values.title}`,
+            processName: `Tarefa Pontual: ${values.title}`,
             status: 'open' as const,
             tasks: [taskData],
             createdBy: user.uid,
