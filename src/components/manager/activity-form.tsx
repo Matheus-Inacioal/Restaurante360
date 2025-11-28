@@ -3,7 +3,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
-
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -24,28 +23,33 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import type { ActivityTemplate, UserRole } from '@/lib/types';
+import type { ActivityTemplate, User, UserRole } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { useFirebase, useUser } from '@/firebase';
+import { useFirebase, useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, serverTimestamp, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+import { Label } from '@/components/ui/label';
 
 const formSchema = z.object({
+  // Section for the task details
   title: z.string().min(3, 'O título deve ter pelo menos 3 caracteres.'),
   description: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.'),
-  category: z.enum(['Higiene', 'Cozinha', 'Atendimento', 'Segurança', 'Outro']),
-  assignedRole: z.enum(['gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']).optional(),
-  frequency: z.enum(['daily', 'weekly', 'monthly', 'on-demand']),
-  isRecurring: z.boolean(),
   requiresPhoto: z.boolean(),
-  status: z.enum(['active', 'inactive']),
+  // Section for assignment
+  assignedTo: z.string().min(1, "Você deve atribuir a tarefa a um colaborador."),
+  date: z.date({ required_error: "A data é obrigatória." }),
+  shift: z.enum(['Manhã', 'Tarde', 'Noite']),
 });
 
 type ActivityFormValues = z.infer<typeof formSchema>;
 
 interface ActivityFormProps {
-  activity?: ActivityTemplate;
+  activity?: ActivityTemplate; // This can be used to pre-fill if editing a template to create a one-off task
   onSuccess: () => void;
 }
 
@@ -54,20 +58,21 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
   const { firestore } = useFirebase();
   const { user } = useUser();
 
+  const usersColRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'users');
+  }, [firestore]);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersColRef);
+
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: activity ? {
-        ...activity,
-        status: activity.status || 'active',
-    } : {
-      title: '',
-      description: '',
-      category: 'Cozinha',
-      frequency: 'daily',
-      isRecurring: true,
-      requiresPhoto: false,
-      status: 'active',
-      assignedRole: 'cozinha',
+    defaultValues: {
+      title: activity?.title || '',
+      description: activity?.description || '',
+      requiresPhoto: activity?.requiresPhoto || false,
+      assignedTo: '',
+      date: new Date(),
+      shift: 'Manhã',
     },
   });
 
@@ -76,175 +81,205 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
         toast({
             variant: "destructive",
             title: "Erro de autenticação",
-            description: "Não foi possível salvar a atividade."
+            description: "Não foi possível salvar a tarefa."
         });
         return;
     }
     
     try {
-        if (activity) {
-            // Update existing activity
-            const activityRef = doc(firestore, `users/${user.uid}/activityTemplates`, activity.id);
-            setDocumentNonBlocking(activityRef, {
-                ...values,
-                updatedAt: serverTimestamp(),
-            }, { merge: true });
-        } else {
-            // Create new activity
-            const activitiesCollection = collection(firestore, `users/${user.uid}/activityTemplates`);
-            addDocumentNonBlocking(activitiesCollection, {
-                ...values,
-                createdBy: user.uid,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            });
-        }
+        // Create a single-task checklist
+        const taskData = {
+            id: doc(collection(firestore, '_')).id,
+            activityTemplateId: 'one-off', // Indicates it's not from a template
+            title: values.title,
+            description: values.description,
+            requiresPhoto: values.requiresPhoto,
+            status: 'pending' as const,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        };
+
+        const checklistData = {
+            date: format(values.date, 'yyyy-MM-dd'),
+            shift: values.shift,
+            assignedTo: values.assignedTo,
+            processName: `Tarefa Avulsa: ${values.title}`,
+            status: 'open' as const,
+            tasks: [taskData],
+            createdBy: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        };
+
+        await addDocumentNonBlocking(collection(firestore, 'checklists'), checklistData);
 
         toast({
-        title: `Atividade ${activity ? 'atualizada' : 'criada'}!`,
-        description: `A atividade "${values.title}" foi salva com sucesso.`,
+            title: `Tarefa atribuída!`,
+            description: `A tarefa "${values.title}" foi enviada para o colaborador.`,
         });
         onSuccess();
     } catch (error) {
-        console.error("Error saving activity: ", error);
+        console.error("Error saving one-off task: ", error);
         toast({
             variant: "destructive",
             title: "Erro ao salvar",
-            description: "Ocorreu um problema ao salvar a atividade."
+            description: "Ocorreu um problema ao criar e atribuir a tarefa."
         })
     }
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="title"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Título da Atividade</FormLabel>
-              <FormControl>
-                <Input placeholder="Ex: Limpar a chapa" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="description"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Descrição</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Descreva os passos e o padrão esperado para esta atividade."
-                  {...field}
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <div>
+            <h3 className="text-lg font-medium mb-4 border-b pb-2">Detalhes da Tarefa</h3>
+            <div className="space-y-4">
+                <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Título da Tarefa</FormLabel>
+                    <FormControl>
+                        <Input placeholder="Ex: Comprar mais sacos de lixo" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                    </FormItem>
+                )}
                 />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <FormField
-            control={form.control}
-            name="assignedRole"
-            render={({ field }) => (
-                <FormItem>
-                <FormLabel>Direcionar para Função</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Descrição</FormLabel>
                     <FormControl>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Selecione uma função" />
-                    </SelectTrigger>
+                        <Textarea
+                        placeholder="Descreva em detalhes o que precisa ser feito."
+                        {...field}
+                        />
                     </FormControl>
-                    <SelectContent>
-                        <SelectItem value="gestor">Gestor</SelectItem>
-                        <SelectItem value="bar">Bar</SelectItem>
-                        <SelectItem value="pia">Pia</SelectItem>
-                        <SelectItem value="cozinha">Cozinha</SelectItem>
-                        <SelectItem value="producao">Produção</SelectItem>
-                        <SelectItem value="garcon">Garçom</SelectItem>
-                    </SelectContent>
-                </Select>
-                <FormDescription>Esta atividade será atribuída a este perfil.</FormDescription>
-                <FormMessage />
-                </FormItem>
-            )}
-            />
-            <FormField
-            control={form.control}
-            name="frequency"
-            render={({ field }) => (
-                <FormItem>
-                <FormLabel>Frequência</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                control={form.control}
+                name="requiresPhoto"
+                render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                    <div className="space-y-0.5">
+                        <FormLabel>Exigir Foto como Evidência</FormLabel>
+                        <FormDescription>
+                        O colaborador deverá anexar uma foto para concluir.
+                        </FormDescription>
+                    </div>
                     <FormControl>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Selecione a frequência" />
-                    </SelectTrigger>
+                        <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        />
                     </FormControl>
-                    <SelectContent>
-                        <SelectItem value="daily">Diária</SelectItem>
-                        <SelectItem value="weekly">Semanal</SelectItem>
-                        <SelectItem value="monthly">Mensal</SelectItem>
-                        <SelectItem value="on-demand">Sob Demanda</SelectItem>
-                    </SelectContent>
-                </Select>
-                <FormMessage />
-                </FormItem>
-            )}
-            />
+                    </FormItem>
+                )}
+                />
+            </div>
         </div>
 
-        <div className="space-y-4">
-            <FormField
-            control={form.control}
-            name="isRecurring"
-            render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                <div className="space-y-0.5">
-                    <FormLabel>Tarefa Recorrente</FormLabel>
-                    <FormDescription>
-                    Esta tarefa se repete na frequência definida.
-                    </FormDescription>
-                </div>
-                <FormControl>
-                    <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
+        <div>
+            <h3 className="text-lg font-medium mb-4 border-b pb-2">Atribuição</h3>
+            <div className="space-y-4">
+                 <FormField
+                    control={form.control}
+                    name="assignedTo"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Atribuir para</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Selecione um colaborador" />
+                            </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                                {isLoadingUsers && <SelectItem value="loading" disabled>Carregando...</SelectItem>}
+                                {users?.filter(u => u.role !== 'gestor').map(u => (
+                                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                        </FormItem>
+                    )}
                     />
-                </FormControl>
-                </FormItem>
-            )}
-            />
-            <FormField
-            control={form.control}
-            name="requiresPhoto"
-            render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                <div className="space-y-0.5">
-                    <FormLabel>Exige Foto como Evidência</FormLabel>
-                    <FormDescription>
-                    O colaborador deverá anexar uma foto para concluir.
-                    </FormDescription>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="date"
+                        render={({ field }) => (
+                            <FormItem className="flex flex-col">
+                            <FormLabel>Data de Entrega</FormLabel>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <FormControl>
+                                    <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                        "pl-3 text-left font-normal",
+                                        !field.value && "text-muted-foreground"
+                                    )}
+                                    >
+                                    {field.value ? (
+                                        format(field.value, "PPP")
+                                    ) : (
+                                        <span>Escolha uma data</span>
+                                    )}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    </Button>
+                                </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    initialFocus
+                                />
+                                </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                        />
+                    <FormField
+                        control={form.control}
+                        name="shift"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel>Turno</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione o turno" />
+                                </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    <SelectItem value="Manhã">Manhã</SelectItem>
+                                    <SelectItem value="Tarde">Tarde</SelectItem>
+                                    <SelectItem value="Noite">Noite</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                        />
                 </div>
-                <FormControl>
-                    <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    />
-                </FormControl>
-                </FormItem>
-            )}
-            />
+            </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-4">
             <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Salvando...' : (activity ? 'Salvar Alterações' : 'Criar Atividade')}
+                {form.formState.isSubmitting ? 'Atribuindo...' : 'Criar e Atribuir Tarefa'}
             </Button>
         </div>
       </form>

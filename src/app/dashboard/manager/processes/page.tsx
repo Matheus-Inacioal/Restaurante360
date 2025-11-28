@@ -45,7 +45,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 
 
-export default function ProcessesPage() {
+export default function RoutinesPage() {
     const { firestore } = useFirebase();
     const [isSheetOpen, setIsSheetOpen] = useState(false);
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -79,8 +79,8 @@ export default function ProcessesPage() {
         deleteDocumentNonBlocking(processRef);
 
         toast({
-            title: "Processo Excluído",
-            description: `O processo "${processToDelete.name}" foi excluído com sucesso.`,
+            title: "Rotina Excluída",
+            description: `A rotina "${processToDelete.name}" foi excluída com sucesso.`,
         });
 
         setIsDeleteDialogOpen(false);
@@ -92,8 +92,8 @@ export default function ProcessesPage() {
         const processRef = doc(firestore, 'processes', process.id);
         updateDocumentNonBlocking(processRef, { isActive: !process.isActive });
         toast({
-            title: "Status do Processo Alterado",
-            description: `O processo "${process.name}" foi ${!process.isActive ? 'ativado' : 'inativado'}.`
+            title: "Status da Rotina Alterado",
+            description: `A rotina "${process.name}" foi ${!process.isActive ? 'ativada' : 'inativada'}.`
         })
     }
 
@@ -102,22 +102,22 @@ export default function ProcessesPage() {
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Processos Operacionais</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Rotinas Operacionais</h2>
           <p className="text-muted-foreground">
-            Agrupe atividades em processos para otimizar os checklists.
+            Agrupe atividades em rotinas para otimizar os checklists recorrentes.
           </p>
         </div>
         <Button onClick={handleAddNew}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Novo Processo
+          <PlusCircle className="mr-2 h-4 w-4" /> Nova Rotina
         </Button>
       </div>
 
        <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetContent className="sm:max-w-2xl w-[95vw] overflow-y-auto">
               <SheetHeader>
-              <SheetTitle className="font-headline text-2xl">Criar Novo Processo</SheetTitle>
+              <SheetTitle className="font-headline text-2xl">Criar Nova Rotina</SheetTitle>
               <SheetDescription>
-                  Defina um nome para o processo e selecione as atividades que farão parte dele.
+                  Defina um nome para a rotina e selecione as tarefas que farão parte dela.
               </SheetDescription>
               </SheetHeader>
               <div className="mt-8">
@@ -131,8 +131,8 @@ export default function ProcessesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome do Processo</TableHead>
-                <TableHead>Nº de Atividades</TableHead>
+                <TableHead>Nome da Rotina</TableHead>
+                <TableHead>Nº de Tarefas</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>
                   <span className="sr-only">Ações</span>
@@ -142,7 +142,7 @@ export default function ProcessesPage() {
             <TableBody>
               {isLoading && (
                   <TableRow>
-                      <TableCell colSpan={4} className="text-center">Carregando processos...</TableCell>
+                      <TableCell colSpan={4} className="text-center">Carregando rotinas...</TableCell>
                   </TableRow>
               )}
               {processes && processes.map((process) => (
@@ -167,10 +167,10 @@ export default function ProcessesPage() {
                             id={`status-switch-${process.id}`}
                             checked={process.isActive}
                             onCheckedChange={() => handleToggleActive(process)}
-                            aria-label={`Ativar ou inativar processo ${process.name}`}
+                            aria-label={`Ativar ou inativar rotina ${process.name}`}
                         />
                         <label htmlFor={`status-switch-${process.id}`} className="text-sm text-muted-foreground">
-                            {process.isActive ? 'Ativo' : 'Inativo'}
+                            {process.isActive ? 'Ativa' : 'Inativa'}
                         </label>
                     </div>
                   </TableCell>
@@ -185,7 +185,7 @@ export default function ProcessesPage() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Ações</DropdownMenuLabel>
                         <DropdownMenuItem>Editar</DropdownMenuItem>
-                        <DropdownMenuItem>Ver Atividades</DropdownMenuItem>
+                        <DropdownMenuItem>Ver Tarefas</DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onSelect={() => openDeleteDialog(process)}>
                            <Trash2 className="mr-2 h-4 w-4" /> Excluir
@@ -205,7 +205,7 @@ export default function ProcessesPage() {
             <AlertDialogHeader>
             <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
             <AlertDialogDescription>
-                Essa ação não pode ser desfeita. Isso excluirá permanentemente o processo 
+                Essa ação não pode ser desfeita. Isso excluirá permanentemente a rotina 
                 <span className="font-bold"> {processToDelete?.name}</span> e seus dados associados.
             </AlertDialogDescription>
             </AlertDialogHeader>
@@ -215,7 +215,7 @@ export default function ProcessesPage() {
                 onClick={handleDeleteProcess}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-                Sim, excluir processo
+                Sim, excluir rotina
             </AlertDialogAction>
             </AlertDialogFooter>
         </AlertDialogContent>

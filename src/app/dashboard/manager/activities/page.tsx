@@ -40,7 +40,7 @@ const roleLabels: Record<UserRole, string> = {
     garcon: 'Garçom',
 };
 
-export default function ActivitiesPage() {
+export default function OneOffTasksPage() {
     const { firestore } = useFirebase();
     const { user } = useUser();
     const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -72,22 +72,22 @@ export default function ActivitiesPage() {
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Modelos de Atividade</h2>
+          <h2 className="text-2xl font-bold tracking-tight">Tarefas Avulsas</h2>
           <p className="text-muted-foreground">
-            Crie e gerencie os blocos de construção dos seus checklists.
+            Crie e atribua tarefas pontuais diretamente para um colaborador.
           </p>
         </div>
         <Button onClick={handleAddNew}>
-          <PlusCircle className="mr-2 h-4 w-4" /> Nova Atividade
+          <PlusCircle className="mr-2 h-4 w-4" /> Nova Tarefa Avulsa
         </Button>
       </div>
 
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-          <SheetContent className="sm:max-w-lg w-[90vw] overflow-y-auto">
+          <SheetContent className="sm:max-w-2xl w-[95vw] overflow-y-auto">
               <SheetHeader>
-              <SheetTitle className="font-headline text-2xl">{selectedActivity ? 'Editar Atividade' : 'Criar Nova Atividade'}</SheetTitle>
+              <SheetTitle className="font-headline text-2xl">{selectedActivity ? 'Editar Tarefa' : 'Criar Nova Tarefa Avulsa'}</SheetTitle>
               <SheetDescription>
-                  {selectedActivity ? 'Altere os detalhes desta atividade.' : 'Preencha os detalhes para criar uma nova atividade para seus checklists.'}
+                  {selectedActivity ? 'Altere os detalhes desta tarefa.' : 'Preencha os detalhes para criar e atribuir uma tarefa pontual.'}
               </SheetDescription>
               </SheetHeader>
               <div className="mt-8">
@@ -102,7 +102,7 @@ export default function ActivitiesPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Título</TableHead>
+                <TableHead>Título (Modelos)</TableHead>
                 <TableHead>Função Atribuída</TableHead>
                 <TableHead>Frequência</TableHead>
                 <TableHead>Exige Foto</TableHead>
@@ -115,7 +115,7 @@ export default function ActivitiesPage() {
             <TableBody>
               {isLoading && (
                   <TableRow>
-                      <TableCell colSpan={6} className="text-center">Carregando atividades...</TableCell>
+                      <TableCell colSpan={6} className="text-center">Carregando modelos de tarefas...</TableCell>
                   </TableRow>
               )}
               {activities && activities.map((activity) => (
@@ -147,7 +147,7 @@ export default function ActivitiesPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleEdit(activity)}>Editar</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleEdit(activity)}>Editar Modelo</DropdownMenuItem>
                         <DropdownMenuItem>Inativar</DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

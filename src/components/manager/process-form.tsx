@@ -34,10 +34,10 @@ import { Label } from '@/components/ui/label';
 
 
 const formSchema = z.object({
-  name: z.string().min(3, 'O nome do processo deve ter pelo menos 3 caracteres.'),
+  name: z.string().min(3, 'O nome da rotina deve ter pelo menos 3 caracteres.'),
   description: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.'),
   activityIds: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: 'Você precisa selecionar pelo menos uma atividade.',
+    message: 'Você precisa selecionar pelo menos uma tarefa.',
   }),
 });
 
@@ -86,7 +86,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
       toast({
         variant: 'destructive',
         title: 'Erro de autenticação',
-        description: 'Não foi possível salvar o processo.',
+        description: 'Não foi possível salvar a rotina.',
       });
       return;
     }
@@ -104,13 +104,10 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
       const docRef = await addDocumentNonBlocking(processesCollection, newProcessData);
 
       toast({
-        title: 'Processo criado com sucesso!',
-        description: `O processo "${values.name}" foi salvo. Agora atribua a um colaborador.`,
+        title: 'Rotina criada com sucesso!',
+        description: `A rotina "${values.name}" foi salva. Agora atribua-a como um checklist.`,
       });
       
-      // We don't have the ID immediately, but we have the data.
-      // For the dialog, we'll construct a temporary process object.
-      // The ID isn't strictly needed for checklist creation itself.
       setCreatedProcess({ id: docRef.id, ...values, isActive: true, createdBy: user.uid, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       setIsAssignDialogOpen(true); // Open the assignment dialog
       form.reset();
@@ -120,7 +117,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar',
-        description: 'Ocorreu um problema ao salvar o processo.',
+        description: 'Ocorreu um problema ao salvar a rotina.',
       });
     }
   }
@@ -136,7 +133,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
 
     // 2. Transform activities into task instances
     const tasks = selectedActivities.map(activity => ({
-        id: doc(collection(firestore, '_')).id, // Generate a new unique ID for the sub-collection item
+        id: doc(collection(firestore, '_')).id,
         activityTemplateId: activity.id,
         title: activity.title,
         description: activity.description,
@@ -154,7 +151,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         processName: createdProcess.name,
         processId: createdProcess.id,
         status: 'open' as const,
-        tasks: tasks, // Embed tasks directly
+        tasks: tasks,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -164,11 +161,11 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         await addDocumentNonBlocking(collection(firestore, 'checklists'), checklistData);
         toast({
             title: "Checklist Atribuído!",
-            description: `O processo "${createdProcess.name}" foi atribuído com sucesso.`
+            description: `A rotina "${createdProcess.name}" foi atribuída com sucesso.`
         });
         setIsAssignDialogOpen(false);
         setCreatedProcess(null);
-        onSuccess(); // Close the main sheet
+        onSuccess();
     } catch (error) {
         console.error("Error assigning checklist: ", error);
         toast({ title: "Erro ao Atribuir", description: "Não foi possível criar o checklist.", variant: "destructive" });
@@ -184,7 +181,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
           name="name"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Nome do Processo</FormLabel>
+              <FormLabel>Nome da Rotina</FormLabel>
               <FormControl>
                 <Input placeholder="Ex: Rotina de Abertura da Cozinha" {...field} />
               </FormControl>
@@ -200,7 +197,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
               <FormLabel>Descrição</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Descreva o objetivo deste processo."
+                  placeholder="Descreva o objetivo desta rotina."
                   {...field}
                 />
               </FormControl>
@@ -214,14 +211,14 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
           render={() => (
             <FormItem>
               <div className="mb-4">
-                <FormLabel className="text-base">Atividades</FormLabel>
+                <FormLabel className="text-base">Tarefas da Rotina</FormLabel>
                 <FormDescription>
-                  Selecione as atividades que compõem este processo.
+                  Selecione os modelos de tarefas que compõem esta rotina.
                 </FormDescription>
               </div>
                <ScrollArea className="h-72 w-full rounded-md border">
                 <div className="p-4">
-              {isLoadingActivities && <p>Carregando atividades...</p>}
+              {isLoadingActivities && <p>Carregando modelos de tarefas...</p>}
               {activities?.map((item) => (
                 <FormField
                   key={item.id}
@@ -264,7 +261,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
 
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Salvando...' : 'Criar Processo e Atribuir'}
+            {form.formState.isSubmitting ? 'Salvando...' : 'Criar Rotina e Atribuir'}
           </Button>
         </div>
       </form>
@@ -273,9 +270,9 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
     <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
         <DialogContent>
             <DialogHeader>
-                <DialogTitle>Atribuir Checklist</DialogTitle>
+                <DialogTitle>Atribuir Checklist de Rotina</DialogTitle>
                 <DialogDescription>
-                    O processo "{createdProcess?.name}" foi criado. Agora atribua-o como um checklist para um colaborador.
+                    A rotina "{createdProcess?.name}" foi criada. Agora atribua-a como um checklist para um colaborador.
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
