@@ -141,9 +141,9 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         title: activity.title,
         description: activity.description,
         requiresPhoto: activity.requiresPhoto,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        status: 'pending' as const,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
     }));
 
     // 3. Create the checklist instance
@@ -153,7 +153,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         assignedTo,
         processName: createdProcess.name,
         processId: createdProcess.id,
-        status: 'open',
+        status: 'open' as const,
         tasks: tasks, // Embed tasks directly
         createdBy: user.uid,
         createdAt: serverTimestamp(),
