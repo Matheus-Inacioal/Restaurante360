@@ -41,18 +41,18 @@ export default function DashboardLayout({
     }
   }, [user, isUserLoading, router]);
 
-  const isLoading = isUserLoading || isUserDataLoading || !user;
+  const isLoading = isUserLoading || isUserDataLoading;
+  const currentUser: User | null = !isLoading && user && userData ? { ...userData, id: user.uid } : null;
 
   if (isLoading) {
     return <div className="flex h-screen items-center justify-center">Carregando dados do usuário...</div>;
   }
-  
-  const currentUser: User | null = userData ? { ...userData, id: user.uid } : null;
 
   if (!currentUser) {
      // This can happen briefly if the user doc is being created.
-     // Or if something went wrong during signup.
-    return <div className="flex h-screen items-center justify-center">Verificando perfil do usuário...</div>;
+     // Or if something went wrong during signup. We redirect to login to be safe.
+     // The useEffect above will handle the redirect if the user object itself is null.
+    return <div className="flex h-screen items-center justify-center">Verificando perfil do usuário... Pode ser necessário fazer login novamente.</div>;
   }
 
   const getDashboardTitle = (role: UserRole) => {
