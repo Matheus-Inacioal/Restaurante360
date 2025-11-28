@@ -17,18 +17,19 @@ import type { ChecklistInstance, User } from '@/lib/types';
 export default function ReportsPage() {
     const [date, setDate] = React.useState<Date>(new Date());
     const { firestore } = useFirebase();
-    const { user } = useUser();
+    const { user, isUserLoading } = useUser(); // Use isUserLoading
 
     const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
     const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        // Aguarda o usuário ser carregado
+        if (!firestore || !user || isUserLoading) return null;
         return query(
           collection(firestore, 'checklists'), 
           where('date', '==', formattedDate), 
           where('createdBy', '==', user.uid)
         );
-    }, [firestore, formattedDate, user]);
+    }, [firestore, formattedDate, user, isUserLoading]);
 
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -53,10 +54,11 @@ export default function ReportsPage() {
             totalTasksCount += tasks.length;
             statusCounts[checklist.status]++;
             
-            if (!userCompliance.has(checklist.assignedTo)) {
-                userCompliance.set(checklist.assignedTo, { completed: 0, total: 0 });
+            const assigneeId = checklist.assignedTo;
+            if (!userCompliance.has(assigneeId)) {
+                userCompliance.set(assigneeId, { completed: 0, total: 0 });
             }
-            const compliance = userCompliance.get(checklist.assignedTo)!;
+            const compliance = userCompliance.get(assigneeId)!;
             
             if (tasks.length > 0) {
                 compliance.total += tasks.length;
@@ -74,7 +76,7 @@ export default function ReportsPage() {
             const user = users.find(u => u.id === userId);
             const percentage = data.total > 0 ? (data.completed / data.total) * 100 : 0;
             return {
-                name: user?.name || 'Desconhecido',
+                name: user?.name || userId,
                 value: Math.round(percentage),
                 fill: `hsl(var(--chart-${(index % 5) + 1}))`
             }
@@ -92,7 +94,7 @@ export default function ReportsPage() {
 
     }, [checklists, users]);
     
-    const isLoading = loadingChecklists || loadingUsers;
+    const isLoading = loadingChecklists || loadingUsers || isUserLoading;
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -160,8 +162,8 @@ export default function ReportsPage() {
                   <CardTitle>Conformidade por Colaborador</CardTitle>
               </CardHeader>
               <CardContent className="pl-2">
-                {isLoading ? <p className="text-center">Carregando dados...</p> : (
-                    complianceData.length === 0 ? <p className="text-center text-muted-foreground">Nenhum dado de conformidade para exibir.</p> :
+                {isLoading ? <p className="text-center py-10">Carregando dados...</p> : (
+                    complianceData.length === 0 ? <p className="text-center text-muted-foreground py-10">Nenhum dado de conformidade para exibir na data selecionada.</p> :
                   <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={complianceData} layout="vertical" margin={{ left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -179,8 +181,8 @@ export default function ReportsPage() {
                   <CardTitle>Distribuição de Status dos Checklists</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? <p className="text-center">Carregando dados...</p> : (
-                    statusData.length === 0 ? <p className="text-center text-muted-foreground">Nenhum checklist para exibir.</p> :
+                {isLoading ? <p className="text-center py-10">Carregando dados...</p> : (
+                    statusData.length === 0 ? <p className="text-center text-muted-foreground py-10">Nenhum checklist para exibir na data selecionada.</p> :
                   <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
                           <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
