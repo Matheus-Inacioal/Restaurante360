@@ -38,7 +38,7 @@ export function CollaboratorDashboard() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const { toast } = useToast();
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
   // This query now correctly filters for the logged-in user and today's date.
   const checklistsQuery = useMemoFirebase(() => {
