@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import type { ChecklistInstance } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 
 const getStatusVariant = (status: ChecklistInstance['status']) => {
@@ -63,15 +63,23 @@ const getProgress = (checklist: ChecklistInstance) => {
 
 export default function ChecklistsPage() {
     const { firestore } = useFirebase();
+    const { user } = useUser();
     const [activeTab, setActiveTab] = useState('all');
 
     const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null;
+
+        const baseQuery = collection(firestore, 'checklists');
+        let finalQuery;
+
         if (activeTab === 'all') {
-            return collection(firestore, 'checklists');
+            finalQuery = query(baseQuery, where('createdBy', '==', user.uid));
+        } else {
+            finalQuery = query(baseQuery, where('createdBy', '==', user.uid), where('status', '==', activeTab));
         }
-        return query(collection(firestore, 'checklists'), where('status', '==', activeTab));
-    }, [firestore, activeTab]);
+        return finalQuery;
+
+    }, [firestore, user, activeTab]);
 
     const { data: checklists, isLoading } = useCollection<ChecklistInstance>(checklistsQuery);
 
