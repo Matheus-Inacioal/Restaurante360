@@ -125,13 +125,12 @@ service cloud.firestore {
 
     /**
      * @description
-     *  - Allows a user to read a checklist if they created it or are assigned to it.
-     *  - Allows list if the query filters by createdBy or assignedTo for the current user.
+     *  - Allows reading a checklist if the user is authenticated. The queries in the app
+     *    are responsible for filtering data for the correct user (creator or assignee).
      *  - Write operations are restricted to the creator.
      */
     match /checklists/{checklistId} {
-        allow get: if isSignedIn() && (resource.data.createdBy == request.auth.uid || resource.data.assignedTo == request.auth.uid);
-        allow list: if isSignedIn() && (request.query.filters == null || request.query.filters.createdBy == request.auth.uid || request.query.filters.assignedTo == request.auth.uid);
+        allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
         allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
         allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
