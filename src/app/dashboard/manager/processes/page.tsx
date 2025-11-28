@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, PlusCircle, Workflow } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Workflow, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -13,6 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
   Table,
@@ -22,17 +23,33 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
 import { Badge } from '@/components/ui/badge';
 import type { Process } from '@/lib/types';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ProcessForm } from '@/components/manager/process-form';
+import { deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { useToast } from '@/hooks/use-toast';
 
 
 export default function ProcessesPage() {
     const { firestore } = useFirebase();
     const [isSheetOpen, setIsSheetOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [processToDelete, setProcessToDelete] = useState<Process | null>(null);
+    const { toast } = useToast();
     
     const processesColRef = useMemoFirebase(() =>
         firestore ? collection(firestore, 'processes') : null,
@@ -48,6 +65,27 @@ export default function ProcessesPage() {
     const handleAddNew = () => {
         setIsSheetOpen(true);
     };
+
+    const openDeleteDialog = (process: Process) => {
+        setProcessToDelete(process);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleDeleteProcess = () => {
+        if (!firestore || !processToDelete) return;
+        
+        const processRef = doc(firestore, 'processes', processToDelete.id);
+        deleteDocumentNonBlocking(processRef);
+
+        toast({
+            title: "Processo Excluído",
+            description: `O processo "${processToDelete.name}" foi excluído com sucesso.`,
+        });
+
+        setIsDeleteDialogOpen(false);
+        setProcessToDelete(null);
+    };
+
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -131,7 +169,10 @@ export default function ProcessesPage() {
                         <DropdownMenuLabel>Ações</DropdownMenuLabel>
                         <DropdownMenuItem>Editar</DropdownMenuItem>
                         <DropdownMenuItem>Ver Atividades</DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">Desativar</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10" onSelect={() => openDeleteDialog(process)}>
+                           <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -141,6 +182,28 @@ export default function ProcessesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza absoluta?</AlertDialogTitle>
+            <AlertDialogDescription>
+                Essa ação não pode ser desfeita. Isso excluirá permanentemente o processo 
+                <span className="font-bold"> {processToDelete?.name}</span> e seus dados associados.
+            </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+                onClick={handleDeleteProcess}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+                Sim, excluir processo
+            </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </main>
   );
 }
