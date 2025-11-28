@@ -55,7 +55,7 @@ export function ManagerDashboard() {
     
     const recentChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
-        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
+        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), orderBy('createdBy'), orderBy('createdAt', 'desc'), limit(5));
     }, [firestore, user]);
 
     const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
