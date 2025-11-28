@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table';
 import Link from 'next/link';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import type { TaskInstance, ChecklistInstance } from '@/lib/types';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { serverTimestamp } from 'firebase/firestore';
@@ -44,8 +44,7 @@ export function CollaboratorDashboard() {
     return query(
         collection(firestore, 'checklists'), 
         where('assignedTo', '==', user.uid),
-        where('date', '==', todayStr),
-        orderBy('createdAt', 'desc')
+        where('date', '==', todayStr)
     );
   }, [firestore, user]);
 
