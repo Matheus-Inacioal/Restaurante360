@@ -17,13 +17,15 @@ import type { ChecklistInstance, User } from '@/lib/types';
 export default function ReportsPage() {
     const [date, setDate] = React.useState<Date>(new Date());
     const { firestore } = useFirebase();
-    const { user, isUserLoading } = useUser(); // Use isUserLoading
+    const { user, isUserLoading } = useUser();
 
     const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
+    // CRITICAL FIX: The query now depends on `isUserLoading`.
+    // It will only be created (and thus executed by useCollection) when the user is fully loaded.
+    // This prevents a query with a null `user.uid` from running on initial render.
     const checklistsQuery = useMemoFirebase(() => {
-        // Aguarda o usuário ser carregado
-        if (!firestore || !user || isUserLoading) return null;
+        if (!firestore || isUserLoading || !user) return null;
         return query(
           collection(firestore, 'checklists'), 
           where('date', '==', formattedDate), 
