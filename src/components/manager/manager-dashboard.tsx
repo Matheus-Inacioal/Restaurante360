@@ -45,30 +45,24 @@ import { useMemo } from 'react';
 
 export function ManagerDashboard() {
     const { firestore } = useFirebase();
-    const { user } = useUser();
+    const { user, isUserLoading } = useUser();
     const today = new Date().toISOString().split('T')[0];
 
     const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore || isUserLoading || !user) return null;
         return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), where('date', '==', today));
-    }, [firestore, today, user]);
+    }, [firestore, today, user, isUserLoading]);
     
-    const recentChecklistsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
-        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
-    }, [firestore, user]);
+    const { data: checklistsDoDiaData, isLoading } = useCollection<ChecklistInstance>(checklistsQuery);
 
-    const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
-    const { data: recentChecklists } = useCollection<ChecklistInstance>(recentChecklistsQuery);
-
-    const { checklistsDoDia, checkinsDoDia, tarefasAtrasadas, chartData } = useMemo(() => {
+    const { checklistsDoDia, checkinsDoDia, tarefasAtrasadas, chartData, recentChecklists } = useMemo(() => {
         if (!checklistsDoDiaData) {
             const emptyChartData = [
                 { status: 'Concluído', total: 0, fill: 'hsl(var(--primary))' },
                 { status: 'Em Progresso', total: 0, fill: 'hsl(var(--accent))' },
                 { status: 'Pendente', total: 0, fill: 'hsl(var(--muted-foreground))' },
             ];
-            return { checklistsDoDia: 0, checkinsDoDia: 0, tarefasAtrasadas: 0, chartData: emptyChartData };
+            return { checklistsDoDia: 0, checkinsDoDia: 0, tarefasAtrasadas: 0, chartData: emptyChartData, recentChecklists: [] };
         }
 
         const counts = checklistsDoDiaData.reduce((acc, checklist) => {
@@ -87,12 +81,18 @@ export function ManagerDashboard() {
         ];
         
         const atrasadas = counts.in_progress + counts.open;
+        
+        const sortedRecent = [...checklistsDoDiaData]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5);
+
 
         return {
             checklistsDoDia: checklistsDoDiaData.length,
             checkinsDoDia: uniqueCheckinUsers.size,
             tarefasAtrasadas: atrasadas,
             chartData: newChartData,
+            recentChecklists: sortedRecent,
         };
     }, [checklistsDoDiaData]);
 
@@ -108,7 +108,7 @@ export function ManagerDashboard() {
             <CheckSquare className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{checklistsDoDia}</div>
+            <div className="text-2xl font-bold">{isLoading ? '...' : checklistsDoDia}</div>
             <p className="text-xs text-muted-foreground">
               Total de checklists para hoje
             </p>
@@ -122,7 +122,7 @@ export function ManagerDashboard() {
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">{tarefasAtrasadas}</div>
+            <div className="text-2xl font-bold text-destructive">{isLoading ? '...' : tarefasAtrasadas}</div>
             <p className="text-xs text-muted-foreground">
               Checklists que precisam de atenção
             </p>
@@ -134,7 +134,7 @@ export function ManagerDashboard() {
             <LogIn className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{checkinsDoDia}</div>
+            <div className="text-2xl font-bold">{isLoading ? '...' : checkinsDoDia}</div>
             <p className="text-xs text-muted-foreground">
               Colaboradores com tarefas hoje
             </p>
@@ -194,7 +194,8 @@ export function ManagerDashboard() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {recentChecklists && recentChecklists.map((checklist) => (
+                    {isLoading && <TableRow><TableCell colSpan={2} className="text-center">Carregando...</TableCell></TableRow>}
+                    {!isLoading && recentChecklists && recentChecklists.map((checklist) => (
                         <TableRow key={checklist.id}>
                             <TableCell>
                                 <div className="font-medium">{checklist.assignedTo}</div>
