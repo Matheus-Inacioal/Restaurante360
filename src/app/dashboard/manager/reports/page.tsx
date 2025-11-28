@@ -23,7 +23,11 @@ export default function ReportsPage() {
 
     const checklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
-        return query(collection(firestore, 'checklists'), where('date', '==', formattedDate), where('createdBy', '==', user.uid));
+        return query(
+          collection(firestore, 'checklists'), 
+          where('date', '==', formattedDate), 
+          where('createdBy', '==', user.uid)
+        );
     }, [firestore, formattedDate, user]);
 
     const usersQuery = useMemoFirebase(() => {
@@ -36,7 +40,7 @@ export default function ReportsPage() {
     const { data: users, isLoading: loadingUsers } = useCollection<User>(usersQuery);
 
     const { totalTasks, complianceData, statusData, averageCompliance } = useMemo(() => {
-        if (!checklists || !users) {
+        if (!checklists || !users || checklists.length === 0) {
             return { totalTasks: 0, complianceData: [], statusData: [], averageCompliance: 0 };
         }
 
@@ -64,7 +68,7 @@ export default function ReportsPage() {
             { name: 'Concluídos', value: statusCounts.completed, fill: 'hsl(var(--primary))' },
             { name: 'Em Progresso', value: statusCounts.in_progress, fill: 'hsl(var(--accent))' },
             { name: 'Pendentes', value: statusCounts.open, fill: 'hsl(var(--muted-foreground))' },
-        ];
+        ].filter(item => item.value > 0);
         
         const newComplianceData = Array.from(userCompliance.entries()).map(([userId, data], index) => {
             const user = users.find(u => u.id === userId);
@@ -157,6 +161,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent className="pl-2">
                 {isLoading ? <p className="text-center">Carregando dados...</p> : (
+                    complianceData.length === 0 ? <p className="text-center text-muted-foreground">Nenhum dado de conformidade para exibir.</p> :
                   <ResponsiveContainer width="100%" height={300}>
                       <BarChart data={complianceData} layout="vertical" margin={{ left: 20 }}>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -175,6 +180,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 {isLoading ? <p className="text-center">Carregando dados...</p> : (
+                    statusData.length === 0 ? <p className="text-center text-muted-foreground">Nenhum checklist para exibir.</p> :
                   <ResponsiveContainer width="100%" height={300}>
                       <PieChart>
                           <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
@@ -193,5 +199,3 @@ export default function ReportsPage() {
     </main>
   );
 }
-
-    
