@@ -29,9 +29,9 @@ export default function DashboardLayout({
   const router = useRouter();
 
   const userDocRef = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || isUserLoading) return null;
     return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: userData, isLoading: isUserDataLoading } = useDoc<User>(userDocRef);
 
@@ -41,14 +41,18 @@ export default function DashboardLayout({
     }
   }, [user, isUserLoading, router]);
 
-  if (isUserLoading || isUserDataLoading || !user) {
-    return <div className="flex h-screen items-center justify-center">Carregando...</div>;
+  const isLoading = isUserLoading || isUserDataLoading || !user;
+
+  if (isLoading) {
+    return <div className="flex h-screen items-center justify-center">Carregando dados do usuário...</div>;
   }
   
   const currentUser: User | null = userData ? { ...userData, id: user.uid } : null;
 
   if (!currentUser) {
-    return <div className="flex h-screen items-center justify-center">Carregando dados do usuário...</div>;
+     // This can happen briefly if the user doc is being created.
+     // Or if something went wrong during signup.
+    return <div className="flex h-screen items-center justify-center">Verificando perfil do usuário...</div>;
   }
 
   const getDashboardTitle = (role: UserRole) => {
