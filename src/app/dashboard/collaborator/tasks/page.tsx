@@ -51,12 +51,16 @@ export default function TasksPage() {
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
   
-  const allTasks: EnrichedTask[] = checklists?.flatMap(checklist => 
-    (checklist.tasks || []).map(task => ({
-      ...task,
-      checklistId: checklist.id,
-    }))
-  ) || [];
+  const allTasks: EnrichedTask[] = useMemo(() => {
+      if (!checklists) return [];
+      return checklists.flatMap(checklist => 
+          (checklist.tasks || []).map(task => ({
+              ...task,
+              checklistId: checklist.id,
+          }))
+      );
+  }, [checklists]);
+
 
   const handleCompleteTask = async (task: EnrichedTask) => {
     if (!firestore || !user || !checklists) return;
@@ -77,17 +81,24 @@ export default function TasksPage() {
     const checklistRef = doc(firestore, 'checklists', task.checklistId);
 
     try {
-        // Atomically remove the old task and add the updated one
-        await updateDoc(checklistRef, {
-            tasks: arrayRemove(taskToUpdate)
-        });
-        await updateDoc(checklistRef, {
-            tasks: arrayUnion(updatedTask)
-        });
+        const newTasks = (checklist.tasks || []).map(t => t.id === task.id ? updatedTask : t);
+        const allTasksCompleted = newTasks.every(t => t.status === 'done');
+        
+        const updatePayload: { tasks: any[], status?: 'completed', in_progress?: 'in_progress' } = {
+            tasks: newTasks
+        };
+
+        if (allTasksCompleted) {
+            updatePayload.status = 'completed';
+        } else {
+            updatePayload.in_progress = 'in_progress';
+        }
+
+        await updateDoc(checklistRef, updatePayload);
 
         toast({
             title: "Tarefa concluída!",
-            description: "Bom trabalho!",
+            description: allTasksCompleted ? "Checklist finalizado!" : "Bom trabalho!",
         });
     } catch (error) {
         console.error("Error completing task: ", error);
@@ -95,10 +106,6 @@ export default function TasksPage() {
             variant: "destructive",
             title: "Erro ao concluir tarefa",
             description: "Não foi possível salvar a alteração. Tente novamente."
-        });
-        // If it fails, add the original task back
-        await updateDoc(checklistRef, {
-            tasks: arrayUnion(taskToUpdate)
         });
     }
   };
