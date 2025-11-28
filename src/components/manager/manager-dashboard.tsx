@@ -55,8 +55,13 @@ export function ManagerDashboard() {
 
     const checkinsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
+        // This query needs to be valid. Let's assume we want to see check-ins related to checklists the manager created.
+        // A direct query on checkIns by createdBy of checklist isn't possible.
+        // For the dashboard card, simply counting all check-ins for the day is acceptable for now.
+        // Or we can filter client-side if we fetch all check-ins.
+        // Let's fetch all and show the total number. The security rules will allow this.
         return query(collection(firestore, 'checkIns'), where('date', '==', today));
-    }, [firestore, today, user]);
+    }, [firestore, today]);
 
     const recentChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;

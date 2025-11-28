@@ -125,23 +125,17 @@ service cloud.firestore {
 
     /**
      * @description
-     *  - Allows a user to read/list checklists they created or are assigned to.
-     *  - Restricts creation to signed-in users where the `createdBy` field matches their ID.
-     *  - Allows updates and deletions by any signed-in user for simplicity, but could be restricted to creator/assignee.
-     * @path /checklists/{checklistId}
-     * @allow (get) Any signed-in user can read a specific checklist.
-     * @allow (list) A user can list checklists they created or are assigned to.
-     * @allow (create) An authenticated user can create a checklist.
-     * @allow (update) Any authenticated user can update a checklist.
-     * @allow (delete) Any authenticated user can delete a checklist.
-     * @principle Restricts read access based on user involvement (creator or assignee).
+     *  - Allows reading a checklist if the user is authenticated. The queries in the app
+     *    are responsible for filtering data for the correct user (creator or assignee).
+     *  - Write operations are restricted to the creator.
      */
     match /checklists/{checklistId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
-        allow update: if isSignedIn() && resource != null;
-        allow delete: if isSignedIn() && resource != null;
+        allow update: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+        allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
     }
+
 
     /**
      * @description
@@ -168,24 +162,15 @@ service cloud.firestore {
     /**
      * @description
      *  - Allows anyone to read check-in records.
-     *  - Restricts creation, update, and deletion to authorized users.
-     * @path /checkIns/{checkInId}
-     * @allow (get) Anyone can read check-in records.
-     * @allow (create) Authorized user can create a check-in record.
-     * @allow (update) Authorized user can update a check-in record.
-     * @allow (delete) Authorized user can delete a check-in record.
-     * @deny (create) Unauthorized user attempts to create a check-in record.
-     * @deny (update) Unauthorized user attempts to update a check-in record.
-     * @deny (delete) Unauthorized user attempts to delete a check-in record.
-     * @principle Restricts write access based on authorization.
+     *  - Restricts creation to the user themselves.
      */
     match /checkIns/{checkInId} {
-      allow get: if true;
-      allow list: if true; //Allow public listing for prototyping
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if isSignedIn() && resource != null;
-      allow delete: if isSignedIn() && resource != null;
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
+
 
     /**
      * @description
