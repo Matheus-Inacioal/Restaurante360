@@ -50,20 +50,21 @@ export default function TasksPage() {
   }, [firestore, user]);
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
-
+  
   const allTasks = useMemo<EnrichedTask[]>(() => {
     if (!checklists) return [];
+    // This will correctly extract tasks from all checklists, including one-off tasks.
     return checklists.flatMap(checklist => 
-        (checklist.tasks || []).map(task => ({
-            ...task,
-            checklistId: checklist.id, // Add checklistId to each task
-        }))
+      (checklist.tasks || []).map(task => ({
+        ...task,
+        checklistId: checklist.id, 
+      }))
     );
   }, [checklists]);
   
 
   const handleCompleteTask = (task: EnrichedTask) => {
-    if (!firestore || !checklists) return;
+    if (!firestore || !checklists || !user) return;
 
     const checklist = checklists.find(c => c.id === task.checklistId);
     if (!checklist) return;
@@ -74,7 +75,7 @@ export default function TasksPage() {
             ...t, 
             status: 'done' as const, 
             completedAt: new Date().toISOString(),
-            completedBy: user?.uid 
+            completedBy: user.uid 
           } 
         : t
     );
@@ -115,7 +116,7 @@ export default function TasksPage() {
         <CardHeader>
           <CardTitle>Tarefas do Dia</CardTitle>
           <CardDescription>
-            Complete suas tarefas para garantir a excelência operacional.
+            Complete suas tarefas de rotina e pontuais para garantir a excelência operacional.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -134,7 +135,12 @@ export default function TasksPage() {
                       <TableCell colSpan={4} className="text-center">Carregando tarefas...</TableCell>
                   </TableRow>
               )}
-              {allTasks && allTasks.map((task) => (
+              {!isLoading && allTasks.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center h-24">Você não tem tarefas para hoje.</TableCell>
+                </TableRow>
+              )}
+              {allTasks.map((task) => (
                 <TableRow key={task.id} className={task.status === 'done' ? 'bg-muted/50' : ''}>
                   <TableCell>
                     {task.status === 'done' ? (
