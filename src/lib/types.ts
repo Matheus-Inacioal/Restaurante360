@@ -62,7 +62,7 @@ export type ChecklistInstance = {
   processName?: string;
   processId?: string;
   status: ChecklistStatus;
-  tasks: TaskInstance[];
+  tasks?: TaskInstance[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;

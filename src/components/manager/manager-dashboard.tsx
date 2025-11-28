@@ -40,13 +40,8 @@ import {
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import type { ChecklistInstance, CheckIn } from '@/lib/types';
+import { useMemo } from 'react';
 
-
-const chartData = [
-  { status: 'Concluído', total: Math.floor(Math.random() * 50) + 20, fill: 'hsl(var(--primary))' },
-  { status: 'Em Progresso', total: Math.floor(Math.random() * 20) + 5, fill: 'hsl(var(--accent))' },
-  { status: 'Pendente', total: Math.floor(Math.random() * 10) + 2, fill: 'hsl(var(--muted-foreground))' },
-];
 
 export function ManagerDashboard() {
     const { firestore } = useFirebase();
@@ -64,7 +59,7 @@ export function ManagerDashboard() {
 
     const recentChecklistsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'checklists'), orderBy('date', 'desc'), limit(5));
+        return query(collection(firestore, 'checklists'), orderBy('createdAt', 'desc'), limit(5));
     }, [firestore]);
 
     const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
@@ -75,6 +70,30 @@ export function ManagerDashboard() {
     const checkinsDoDia = checkinsDoDiaData?.length || 0;
 
     const tarefasAtrasadas = checklistsDoDiaData?.filter(c => c.status === 'open' || c.status === 'in_progress').length || 0;
+
+    const chartData = useMemo(() => {
+        if (!checklistsDoDiaData) {
+            return [
+                { status: 'Concluído', total: 0, fill: 'hsl(var(--primary))' },
+                { status: 'Em Progresso', total: 0, fill: 'hsl(var(--accent))' },
+                { status: 'Pendente', total: 0, fill: 'hsl(var(--muted-foreground))' },
+            ];
+        }
+
+        const counts = checklistsDoDiaData.reduce((acc, checklist) => {
+            if (checklist.status === 'completed') acc.completed++;
+            if (checklist.status === 'in_progress') acc.in_progress++;
+            if (checklist.status === 'open') acc.open++;
+            return acc;
+        }, { completed: 0, in_progress: 0, open: 0 });
+
+        return [
+            { status: 'Concluído', total: counts.completed, fill: 'hsl(var(--primary))' },
+            { status: 'Em Progresso', total: counts.in_progress, fill: 'hsl(var(--accent))' },
+            { status: 'Pendente', total: counts.open, fill: 'hsl(var(--muted-foreground))' },
+        ];
+    }, [checklistsDoDiaData]);
+
 
   return (
     <div>
