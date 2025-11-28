@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { format } from 'date-fns';
 
@@ -51,44 +51,56 @@ export default function TasksPage() {
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
   
-  const allTasks: EnrichedTask[] = useMemo(() => {
-    if (!checklists) return [];
-    return checklists.flatMap(checklist => 
-      (checklist.tasks || []).map(task => ({
-        ...task,
-        checklistId: checklist.id,
-      }))
-    );
-  }, [checklists]);
+  const allTasks: EnrichedTask[] = checklists?.flatMap(checklist => 
+    (checklist.tasks || []).map(task => ({
+      ...task,
+      checklistId: checklist.id,
+    }))
+  ) || [];
 
-  const handleCompleteTask = (task: EnrichedTask) => {
-    if (!firestore || !checklists || !user) return;
+  const handleCompleteTask = async (task: EnrichedTask) => {
+    if (!firestore || !user || !checklists) return;
 
     const checklist = checklists.find(c => c.id === task.checklistId);
     if (!checklist) return;
+
+    const taskToUpdate = checklist.tasks?.find(t => t.id === task.id);
+    if (!taskToUpdate) return;
     
-    // Find the index of the task to update within the checklist's tasks array
-    const taskIndex = checklist.tasks?.findIndex(t => t.id === task.id);
-    if (taskIndex === undefined || taskIndex === -1) return;
-
-    // Create a deep copy of the tasks array to avoid direct mutation
-    const updatedTasks = JSON.parse(JSON.stringify(checklist.tasks));
-
-    // Update the specific task
-    updatedTasks[taskIndex] = {
-        ...updatedTasks[taskIndex],
-        status: 'done' as const,
-        completedAt: new Date().toISOString(),
-        completedBy: user.uid
+    const updatedTask = {
+      ...taskToUpdate,
+      status: 'done' as const,
+      completedAt: new Date().toISOString(),
+      completedBy: user.uid
     };
     
-    const checklistRef = doc(firestore, `checklists/${task.checklistId}`);
-    updateDocumentNonBlocking(checklistRef, { tasks: updatedTasks });
+    const checklistRef = doc(firestore, 'checklists', task.checklistId);
 
-    toast({
-      title: "Tarefa concluída!",
-      description: "Bom trabalho!",
-    });
+    try {
+        // Atomically remove the old task and add the updated one
+        await updateDoc(checklistRef, {
+            tasks: arrayRemove(taskToUpdate)
+        });
+        await updateDoc(checklistRef, {
+            tasks: arrayUnion(updatedTask)
+        });
+
+        toast({
+            title: "Tarefa concluída!",
+            description: "Bom trabalho!",
+        });
+    } catch (error) {
+        console.error("Error completing task: ", error);
+        toast({
+            variant: "destructive",
+            title: "Erro ao concluir tarefa",
+            description: "Não foi possível salvar a alteração. Tente novamente."
+        });
+        // If it fails, add the original task back
+        await updateDoc(checklistRef, {
+            tasks: arrayUnion(taskToUpdate)
+        });
+    }
   };
   
   const handleOpenPhotoUpload = (task: EnrichedTask) => {
