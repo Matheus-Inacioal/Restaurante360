@@ -51,34 +51,36 @@ export default function TasksPage() {
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
   
-  const allTasks = useMemo<EnrichedTask[]>(() => {
+  const allTasks: EnrichedTask[] = useMemo(() => {
     if (!checklists) return [];
-    // This will correctly extract tasks from all checklists, including one-off tasks.
     return checklists.flatMap(checklist => 
       (checklist.tasks || []).map(task => ({
         ...task,
-        checklistId: checklist.id, 
+        checklistId: checklist.id,
       }))
     );
   }, [checklists]);
-  
 
   const handleCompleteTask = (task: EnrichedTask) => {
     if (!firestore || !checklists || !user) return;
 
     const checklist = checklists.find(c => c.id === task.checklistId);
     if (!checklist) return;
+    
+    // Find the index of the task to update within the checklist's tasks array
+    const taskIndex = checklist.tasks?.findIndex(t => t.id === task.id);
+    if (taskIndex === undefined || taskIndex === -1) return;
 
-    const updatedTasks = checklist.tasks?.map(t => 
-        t.id === task.id 
-        ? { 
-            ...t, 
-            status: 'done' as const, 
-            completedAt: new Date().toISOString(),
-            completedBy: user.uid 
-          } 
-        : t
-    );
+    // Create a deep copy of the tasks array to avoid direct mutation
+    const updatedTasks = JSON.parse(JSON.stringify(checklist.tasks));
+
+    // Update the specific task
+    updatedTasks[taskIndex] = {
+        ...updatedTasks[taskIndex],
+        status: 'done' as const,
+        completedAt: new Date().toISOString(),
+        completedBy: user.uid
+    };
     
     const checklistRef = doc(firestore, `checklists/${task.checklistId}`);
     updateDocumentNonBlocking(checklistRef, { tasks: updatedTasks });
