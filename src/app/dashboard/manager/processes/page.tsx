@@ -26,10 +26,13 @@ import { Badge } from '@/components/ui/badge';
 import type { Process } from '@/lib/types';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ProcessForm } from '@/components/manager/process-form';
 
 
 export default function ProcessesPage() {
     const { firestore } = useFirebase();
+    const [isSheetOpen, setIsSheetOpen] = useState(false);
     
     const processesColRef = useMemoFirebase(() =>
         firestore ? collection(firestore, 'processes') : null,
@@ -37,6 +40,14 @@ export default function ProcessesPage() {
     );
 
     const { data: processes, isLoading } = useCollection<Process>(processesColRef);
+
+    const handleFormSuccess = () => {
+        setIsSheetOpen(false);
+    };
+
+    const handleAddNew = () => {
+        setIsSheetOpen(true);
+    };
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -47,10 +58,25 @@ export default function ProcessesPage() {
             Agrupe atividades em processos para otimizar os checklists.
           </p>
         </div>
-        <Button>
+        <Button onClick={handleAddNew}>
           <PlusCircle className="mr-2 h-4 w-4" /> Novo Processo
         </Button>
       </div>
+
+       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+          <SheetContent className="sm:max-w-2xl w-[95vw] overflow-y-auto">
+              <SheetHeader>
+              <SheetTitle className="font-headline text-2xl">Criar Novo Processo</SheetTitle>
+              <SheetDescription>
+                  Defina um nome para o processo e selecione as atividades que farão parte dele.
+              </SheetDescription>
+              </SheetHeader>
+              <div className="mt-8">
+                  <ProcessForm onSuccess={handleFormSuccess} />
+              </div>
+          </SheetContent>
+      </Sheet>
+
       <Card>
         <CardContent className="pt-6">
           <Table>
@@ -83,7 +109,7 @@ export default function ProcessesPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary" className="text-base">
-                      {process.activityIds.length}
+                      {process.activityIds?.length || 0}
                     </Badge>
                   </TableCell>
                   <TableCell>
