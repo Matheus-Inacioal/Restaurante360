@@ -1,7 +1,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useFieldArray, useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirebase, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, serverTimestamp, doc, writeBatch } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import type { ActivityTemplate, Process, User, UserRole } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,19 +26,24 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
+import { Switch } from '../ui/switch';
 
+
+const taskSchema = z.object({
+    title: z.string().min(3, "O título da tarefa deve ter pelo menos 3 caracteres."),
+    description: z.string().optional(),
+    requiresPhoto: z.boolean(),
+});
 
 const formSchema = z.object({
   name: z.string().min(3, 'O nome da rotina deve ter pelo menos 3 caracteres.'),
   description: z.string().min(10, 'A descrição deve ter pelo menos 10 caracteres.'),
-  activityIds: z.array(z.string()).refine((value) => value.some((item) => item), {
-    message: 'Você precisa selecionar pelo menos uma tarefa.',
-  }),
+  tasks: z.array(taskSchema).min(1, 'Você precisa adicionar pelo menos uma tarefa à rotina.'),
 });
 
 type ProcessFormValues = z.infer<typeof formSchema>;
@@ -59,17 +64,11 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
   const [shift, setShift] = useState<'Manhã' | 'Tarde' | 'Noite'>('Manhã');
   const [date, setDate] = useState<Date | undefined>(new Date());
 
-  const activitiesColRef = useMemoFirebase(() => {
-    if (!user || !firestore) return null;
-    return collection(firestore, `users/${user.uid}/activityTemplates`);
-  }, [user, firestore]);
-
   const usersColRef = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'users');
   }, [firestore]);
-
-  const { data: activities, isLoading: isLoadingActivities } = useCollection<ActivityTemplate>(activitiesColRef);
+  
   const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersColRef);
 
   const form = useForm<ProcessFormValues>({
@@ -77,9 +76,15 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
     defaultValues: {
       name: '',
       description: '',
-      activityIds: [],
+      tasks: [{ title: '', description: '', requiresPhoto: false }],
     },
   });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "tasks"
+  });
+
 
   async function onSubmit(values: ProcessFormValues) {
     if (!firestore || !user) {
@@ -92,23 +97,67 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
     }
 
     try {
-      const processesCollection = collection(firestore, 'processes');
+      const batch = writeBatch(firestore);
+      const activityTemplateCollection = collection(firestore, `users/${user.uid}/activityTemplates`);
+      
+      const activityIds: string[] = [];
+      const createdActivities: ActivityTemplate[] = [];
+
+      // Create activity templates for each task
+      for (const task of values.tasks) {
+        const activityRef = doc(activityTemplateCollection);
+        const newActivity: Omit<ActivityTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
+            title: task.title,
+            description: task.description || '',
+            category: 'Outro',
+            frequency: 'on-demand',
+            isRecurring: true,
+            requiresPhoto: task.requiresPhoto,
+            status: 'active',
+            createdBy: user.uid,
+        };
+        batch.set(activityRef, {
+            ...newActivity,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+        });
+        activityIds.push(activityRef.id);
+        createdActivities.push({ ...newActivity, id: activityRef.id, createdAt: '', updatedAt: '' });
+      }
+
+      const processCollection = collection(firestore, 'processes');
+      const processRef = doc(processCollection);
       const newProcessData = {
-        ...values,
+        name: values.name,
+        description: values.description,
+        activityIds,
         isActive: true,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
-      
-      const docRef = await addDocumentNonBlocking(processesCollection, newProcessData);
+      batch.set(processRef, newProcessData);
+
+      await batch.commit();
 
       toast({
         title: 'Rotina criada com sucesso!',
         description: `A rotina "${values.name}" foi salva. Agora atribua-a como um checklist.`,
       });
       
-      setCreatedProcess({ id: docRef.id, ...values, isActive: true, createdBy: user.uid, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      const finalProcess: Process = { 
+        id: processRef.id, 
+        name: values.name,
+        description: values.description,
+        activityIds,
+        isActive: true, 
+        createdBy: user.uid, 
+        createdAt: new Date().toISOString(), 
+        updatedAt: new Date().toISOString() 
+      };
+      
+      sessionStorage.setItem('createdActivities', JSON.stringify(createdActivities));
+      setCreatedProcess(finalProcess);
       setIsAssignDialogOpen(true); // Open the assignment dialog
       form.reset();
 
@@ -127,12 +176,16 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         toast({ title: "Erro", description: "Por favor, preencha todos os campos para atribuir o checklist.", variant: "destructive" });
         return;
     }
+    
+    const createdActivitiesStr = sessionStorage.getItem('createdActivities');
+    const activitiesToUse: ActivityTemplate[] = createdActivitiesStr ? JSON.parse(createdActivitiesStr) : [];
+    
+    if (activitiesToUse.length === 0) {
+        toast({ title: "Erro", description: "Não foi possível encontrar as tarefas da rotina.", variant: "destructive" });
+        return;
+    }
 
-    // 1. Get the full activity objects for the selected IDs
-    const selectedActivities = activities?.filter(a => createdProcess.activityIds.includes(a.id)) || [];
-
-    // 2. Transform activities into task instances
-    const tasks = selectedActivities.map(activity => ({
+    const tasks = activitiesToUse.map(activity => ({
         id: doc(collection(firestore, '_')).id,
         activityTemplateId: activity.id,
         title: activity.title,
@@ -143,7 +196,6 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         updatedAt: new Date().toISOString(),
     }));
 
-    // 3. Create the checklist instance
     const checklistData = {
         date: format(date, 'yyyy-MM-dd'),
         shift,
@@ -165,6 +217,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         });
         setIsAssignDialogOpen(false);
         setCreatedProcess(null);
+        sessionStorage.removeItem('createdActivities');
         onSuccess();
     } catch (error) {
         console.error("Error assigning checklist: ", error);
@@ -205,59 +258,83 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="activityIds"
-          render={() => (
-            <FormItem>
-              <div className="mb-4">
-                <FormLabel className="text-base">Tarefas da Rotina</FormLabel>
-                <FormDescription>
-                  Selecione os modelos de tarefas que compõem esta rotina.
-                </FormDescription>
-              </div>
-               <ScrollArea className="h-72 w-full rounded-md border">
-                <div className="p-4">
-              {isLoadingActivities && <p>Carregando modelos de tarefas...</p>}
-              {activities?.map((item) => (
-                <FormField
-                  key={item.id}
-                  control={form.control}
-                  name="activityIds"
-                  render={({ field }) => {
-                    return (
-                      <FormItem
-                        key={item.id}
-                        className="flex flex-row items-start space-x-3 space-y-0 py-2"
-                      >
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value?.includes(item.id)}
-                            onCheckedChange={(checked) => {
-                              return checked
-                                ? field.onChange([...(field.value || []), item.id])
-                                : field.onChange(
-                                    field.value?.filter(
-                                      (value) => value !== item.id
-                                    )
-                                  );
-                            }}
-                          />
-                        </FormControl>
-                        <FormLabel className="font-normal">
-                          {item.title}
-                        </FormLabel>
-                      </FormItem>
-                    );
-                  }}
-                />
-              ))}
-              </div>
-              </ScrollArea>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        
+        <div>
+            <FormLabel>Tarefas da Rotina</FormLabel>
+            <FormDescription>Adicione as tarefas que fazem parte desta rotina.</FormDescription>
+            <div className="space-y-4 mt-4">
+                {fields.map((item, index) => (
+                    <div key={item.id} className="p-4 border rounded-lg space-y-4 relative">
+                        <FormField
+                            control={form.control}
+                            name={`tasks.${index}.title`}
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Título da Tarefa {index + 1}</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="Ex: Verificar temperatura das geladeiras" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name={`tasks.${index}.description`}
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel>Descrição (Opcional)</FormLabel>
+                                <FormControl>
+                                    <Textarea placeholder="Detalhes sobre a tarefa..." {...field} />
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                         <FormField
+                            control={form.control}
+                            name={`tasks.${index}.requiresPhoto`}
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center space-x-2">
+                                <FormControl>
+                                    <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                                <FormLabel>Exige foto como evidência</FormLabel>
+                                </FormItem>
+                            )}
+                        />
+
+                        {fields.length > 1 && (
+                            <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2 h-7 w-7"
+                                onClick={() => remove(index)}
+                            >
+                                <Trash2 className="h-4 w-4" />
+                            </Button>
+                        )}
+                    </div>
+                ))}
+
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => append({ title: '', description: '', requiresPhoto: false })}
+                >
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Adicionar Tarefa
+                </Button>
+                <FormMessage>{form.formState.errors.tasks?.message}</FormMessage>
+            </div>
+        </div>
+
 
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={form.formState.isSubmitting}>
