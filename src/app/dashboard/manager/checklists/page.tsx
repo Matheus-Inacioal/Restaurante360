@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { MoreHorizontal, ListFilter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { ChecklistInstance } from '@/lib/types';
+import type { ChecklistInstance, ChecklistStatus } from '@/lib/types';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
@@ -64,26 +65,28 @@ const getProgress = (checklist: ChecklistInstance) => {
 export default function ChecklistsPage() {
     const { firestore } = useFirebase();
     const { user } = useUser();
-    const [activeTab, setActiveTab] = useState('all');
+    const [activeTab, setActiveTab] = useState<ChecklistStatus | 'all'>('all');
 
-    const checklistsQuery = useMemoFirebase(() => {
+    // Single, secure query to get all checklists for the current manager.
+    const allChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
+        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid));
+    }, [firestore, user]);
 
-        const baseQuery = query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid));
-        
+    const { data: allChecklists, isLoading } = useCollection<ChecklistInstance>(allChecklistsQuery);
+
+    // Filter checklists on the client-side based on the active tab.
+    const filteredChecklists = useMemo(() => {
+        if (!allChecklists) return [];
         if (activeTab === 'all') {
-            return baseQuery;
+            return allChecklists;
         }
-        
-        return query(baseQuery, where('status', '==', activeTab));
-
-    }, [firestore, user, activeTab]);
-
-    const { data: checklists, isLoading } = useCollection<ChecklistInstance>(checklistsQuery);
+        return allChecklists.filter(checklist => checklist.status === activeTab);
+    }, [allChecklists, activeTab]);
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-      <Tabs defaultValue="all" onValueChange={setActiveTab}>
+      <Tabs defaultValue="all" onValueChange={(value) => setActiveTab(value as ChecklistStatus | 'all')}>
         <div className="flex items-center">
           <TabsList>
             <TabsTrigger value="all">Todos</TabsTrigger>
@@ -134,7 +137,12 @@ export default function ChecklistsPage() {
                           <TableCell colSpan={6} className="text-center">Carregando checklists...</TableCell>
                       </TableRow>
                   )}
-                  {checklists && checklists.map((checklist) => (
+                  {!isLoading && filteredChecklists.length === 0 && (
+                     <TableRow>
+                        <TableCell colSpan={6} className="text-center h-24">Nenhum checklist encontrado para esta categoria.</TableCell>
+                     </TableRow>
+                  )}
+                  {filteredChecklists && filteredChecklists.map((checklist) => (
                     <TableRow key={checklist.id}>
                       <TableCell className="font-medium">
                           {checklist.processName || `Checklist Avulso`}
