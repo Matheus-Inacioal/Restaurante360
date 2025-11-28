@@ -54,11 +54,9 @@ export function ManagerDashboard() {
     }, [firestore, today, user]);
 
     const checkinsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        // This query might be too broad if there are multiple restaurants/locations.
-        // For now, it fetches all check-ins for the day.
+        if (!firestore || !user) return null;
         return query(collection(firestore, 'checkIns'), where('date', '==', today));
-    }, [firestore, today]);
+    }, [firestore, today, user]);
 
     const recentChecklistsQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
@@ -219,5 +217,3 @@ export function ManagerDashboard() {
     </div>
   );
 }
-
-    
