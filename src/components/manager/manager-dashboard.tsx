@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/table';
 import { useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import type { ChecklistInstance } from '@/lib/types';
+import type { ChecklistInstance, User } from '@/lib/types';
 import { useMemo } from 'react';
 
 
@@ -52,11 +52,17 @@ export function ManagerDashboard() {
         if (!firestore || isUserLoading || !user) return null;
         return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), where('date', '==', today));
     }, [firestore, today, user, isUserLoading]);
+
+    const usersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return collection(firestore, 'users');
+    }, [firestore]);
     
-    const { data: checklistsDoDiaData, isLoading } = useCollection<ChecklistInstance>(checklistsQuery);
+    const { data: checklistsDoDiaData, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
+    const { data: usersData, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
 
     const { checklistsDoDia, checkinsDoDia, tarefasAtrasadas, chartData, recentChecklists } = useMemo(() => {
-        if (!checklistsDoDiaData) {
+        if (!checklistsDoDiaData || !usersData) {
             const emptyChartData = [
                 { status: 'Concluído', total: 0, fill: 'hsl(var(--primary))' },
                 { status: 'Em Progresso', total: 0, fill: 'hsl(var(--accent))' },
@@ -82,9 +88,15 @@ export function ManagerDashboard() {
         
         const atrasadas = counts.in_progress + counts.open;
         
+        const usersMap = new Map(usersData.map(u => [u.id, u.name]));
+        
         const sortedRecent = [...checklistsDoDiaData]
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5);
+          .slice(0, 5)
+          .map(checklist => ({
+              ...checklist,
+              assignedToName: usersMap.get(checklist.assignedTo) || checklist.assignedTo
+          }));
 
 
         return {
@@ -94,8 +106,9 @@ export function ManagerDashboard() {
             chartData: newChartData,
             recentChecklists: sortedRecent,
         };
-    }, [checklistsDoDiaData]);
+    }, [checklistsDoDiaData, usersData]);
 
+    const isLoading = isLoadingChecklists || isLoadingUsers;
 
   return (
     <div>
@@ -198,7 +211,7 @@ export function ManagerDashboard() {
                     {!isLoading && recentChecklists && recentChecklists.map((checklist) => (
                         <TableRow key={checklist.id}>
                             <TableCell>
-                                <div className="font-medium">{checklist.assignedTo}</div>
+                                <div className="font-medium">{checklist.assignedToName}</div>
                                 <div className="text-sm text-muted-foreground">{checklist.processName}</div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -218,4 +231,3 @@ export function ManagerDashboard() {
       </div>
     </div>
   );
-}
