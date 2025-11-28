@@ -37,11 +37,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import type { Process } from '@/lib/types';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, doc } from 'firebase/firestore';
+import { collection, doc, updateDoc } from 'firebase/firestore';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ProcessForm } from '@/components/manager/process-form';
-import { deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
 
 
 export default function ProcessesPage() {
@@ -85,6 +86,16 @@ export default function ProcessesPage() {
         setIsDeleteDialogOpen(false);
         setProcessToDelete(null);
     };
+
+    const handleToggleActive = (process: Process) => {
+        if (!firestore) return;
+        const processRef = doc(firestore, 'processes', process.id);
+        updateDocumentNonBlocking(processRef, { isActive: !process.isActive });
+        toast({
+            title: "Status do Processo Alterado",
+            description: `O processo "${process.name}" foi ${!process.isActive ? 'ativado' : 'inativado'}.`
+        })
+    }
 
 
   return (
@@ -151,11 +162,17 @@ export default function ProcessesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={process.isActive ? 'default' : 'destructive'}
-                     className={process.isActive ? 'bg-green-600' : ''}
-                    >
-                      {process.isActive ? 'Ativo' : 'Inativo'}
-                    </Badge>
+                    <div className="flex items-center space-x-2">
+                        <Switch
+                            id={`status-switch-${process.id}`}
+                            checked={process.isActive}
+                            onCheckedChange={() => handleToggleActive(process)}
+                            aria-label={`Ativar ou inativar processo ${process.name}`}
+                        />
+                        <label htmlFor={`status-switch-${process.id}`} className="text-sm text-muted-foreground">
+                            {process.isActive ? 'Ativo' : 'Inativo'}
+                        </label>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
