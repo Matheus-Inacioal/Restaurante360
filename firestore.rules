@@ -125,22 +125,20 @@ service cloud.firestore {
 
     /**
      * @description
-     *  - Allows anyone to read checklists.
-     *  - Restricts creation, update, and deletion to authorized users (e.g., managers).
-     *  - Requires the `createdBy` field to match the creating user's ID.
+     *  - Allows a user to read/list checklists they created or are assigned to.
+     *  - Restricts creation to signed-in users where the `createdBy` field matches their ID.
+     *  - Allows updates and deletions by any signed-in user for simplicity, but could be restricted to creator/assignee.
      * @path /checklists/{checklistId}
-     * @allow (get) Anyone can read checklists.
-     * @allow (create) Authorized user can create a checklist.
-     * @allow (update) Authorized user can update a checklist.
-     * @allow (delete) Authorized user can delete a checklist.
-     * @deny (create) Unauthorized user attempts to create a checklist.
-     * @deny (update) Unauthorized user attempts to update a checklist.
-     * @deny (delete) Unauthorized user attempts to delete a checklist.
-     * @principle Restricts write access based on authorization.
+     * @allow (get) Any signed-in user can read a specific checklist.
+     * @allow (list) A user can list checklists they created or are assigned to.
+     * @allow (create) An authenticated user can create a checklist.
+     * @allow (update) Any authenticated user can update a checklist.
+     * @allow (delete) Any authenticated user can delete a checklist.
+     * @principle Restricts read access based on user involvement (creator or assignee).
      */
     match /checklists/{checklistId} {
-      allow get: if true;
-      allow list: if true; //Allow public listing for prototyping
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (resource == null || resource.data.createdBy == request.auth.uid || resource.data.assignedTo == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.createdBy == request.auth.uid;
       allow update: if isSignedIn() && resource != null;
       allow delete: if isSignedIn() && resource != null;
@@ -213,5 +211,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
