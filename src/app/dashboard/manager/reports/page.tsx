@@ -9,7 +9,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import React, { useMemo } from 'react';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 import type { ChecklistInstance, User } from '@/lib/types';
 
@@ -17,13 +17,14 @@ import type { ChecklistInstance, User } from '@/lib/types';
 export default function ReportsPage() {
     const [date, setDate] = React.useState<Date>(new Date());
     const { firestore } = useFirebase();
+    const { user } = useUser();
 
     const formattedDate = date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
 
     const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(collection(firestore, 'checklists'), where('date', '==', formattedDate));
-    }, [firestore, formattedDate]);
+        if (!firestore || !user) return null;
+        return query(collection(firestore, 'checklists'), where('date', '==', formattedDate), where('createdBy', '==', user.uid));
+    }, [firestore, formattedDate, user]);
 
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -192,3 +193,5 @@ export default function ReportsPage() {
     </main>
   );
 }
+
+    

@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import type { ChecklistInstance, CheckIn } from '@/lib/types';
 import { useMemo } from 'react';
@@ -45,22 +45,25 @@ import { useMemo } from 'react';
 
 export function ManagerDashboard() {
     const { firestore } = useFirebase();
+    const { user } = useUser();
     const today = new Date().toISOString().split('T')[0];
 
     const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(collection(firestore, 'checklists'), where('date', '==', today));
-    }, [firestore, today]);
+        if (!firestore || !user) return null;
+        return query(collection(firestore, 'checklists'), where('date', '==', today), where('createdBy', '==', user.uid));
+    }, [firestore, today, user]);
 
     const checkinsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
+        // This query might be too broad if there are multiple restaurants/locations.
+        // For now, it fetches all check-ins for the day.
         return query(collection(firestore, 'checkIns'), where('date', '==', today));
     }, [firestore, today]);
 
     const recentChecklistsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(collection(firestore, 'checklists'), orderBy('createdAt', 'desc'), limit(5));
-    }, [firestore]);
+        if (!firestore || !user) return null;
+        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
+    }, [firestore, user]);
 
     const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
     const { data: checkinsDoDiaData } = useCollection<CheckIn>(checkinsQuery);
@@ -216,3 +219,5 @@ export function ManagerDashboard() {
     </div>
   );
 }
+
+    
