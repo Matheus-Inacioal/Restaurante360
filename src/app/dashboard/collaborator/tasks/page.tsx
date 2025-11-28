@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Camera, CheckCircle2, Circle, Clock, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { TaskInstance } from '@/lib/types';
+import type { TaskInstance, ChecklistInstance } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -27,47 +27,62 @@ import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase
 import { collection, query, where, doc, updateDoc } from 'firebase/firestore';
 import { updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 
+interface EnrichedTask extends TaskInstance {
+    checklistId: string;
+}
 
 export default function TasksPage() {
   const { firestore } = useFirebase();
   const { user } = useUser();
   const { toast } = useToast();
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<TaskInstance | null>(null);
+  const [selectedTask, setSelectedTask] = useState<EnrichedTask | null>(null);
 
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(collection(firestore, 'checklists'), where('assignedTo', '==', user.uid));
   }, [firestore, user]);
 
-  const { data: checklists, isLoading: isLoadingChecklists } = useCollection(checklistsQuery);
+  const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
 
-  const tasksQuery = useMemoFirebase(() => {
-    if (!firestore || !checklists || checklists.length === 0) return null;
-    // For simplicity, we'll query tasks from the first checklist.
-    // A more robust implementation might involve querying all tasks for all assigned checklists.
-    const checklistId = checklists[0].id;
-    return collection(firestore, `checklists/${checklistId}/tasks`);
-  }, [firestore, checklists]);
-
-  const { data: tasks, isLoading: isLoadingTasks } = useCollection<TaskInstance>(tasksQuery);
+  const allTasks = useMemo<EnrichedTask[]>(() => {
+    if (!checklists) return [];
+    return checklists.flatMap(checklist => 
+        (checklist.tasks || []).map(task => ({
+            ...task,
+            checklistId: checklist.id, // Add checklistId to each task
+        }))
+    );
+  }, [checklists]);
   
 
-  const handleCompleteTask = (task: TaskInstance) => {
-    if (!firestore) return;
-    const taskRef = doc(firestore, `checklists/${task.checklistId}/tasks/${task.id}`);
-    updateDocumentNonBlocking(taskRef, {
-        status: 'done',
-        completedAt: new Date().toISOString(),
-        completedBy: user?.uid,
-    });
+  const handleCompleteTask = (task: EnrichedTask) => {
+    if (!firestore || !checklists) return;
+
+    const checklist = checklists.find(c => c.id === task.checklistId);
+    if (!checklist) return;
+
+    const updatedTasks = checklist.tasks?.map(t => 
+        t.id === task.id 
+        ? { 
+            ...t, 
+            status: 'done' as const, 
+            completedAt: new Date().toISOString(),
+            completedBy: user?.uid 
+          } 
+        : t
+    );
+    
+    const checklistRef = doc(firestore, `checklists/${task.checklistId}`);
+    updateDocumentNonBlocking(checklistRef, { tasks: updatedTasks });
+
     toast({
       title: "Tarefa concluída!",
       description: "Bom trabalho!",
     });
   };
   
-  const handleOpenPhotoUpload = (task: TaskInstance) => {
+  const handleOpenPhotoUpload = (task: EnrichedTask) => {
     setSelectedTask(task);
     setIsPhotoUploadOpen(true);
   }
@@ -86,7 +101,7 @@ export default function TasksPage() {
     });
   }
 
-  const isLoading = isLoadingChecklists || isLoadingTasks;
+  const isLoading = isLoadingChecklists;
 
   return (
     <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
@@ -113,7 +128,7 @@ export default function TasksPage() {
                       <TableCell colSpan={4} className="text-center">Carregando tarefas...</TableCell>
                   </TableRow>
               )}
-              {tasks && tasks.map((task) => (
+              {allTasks && allTasks.map((task) => (
                 <TableRow key={task.id} className={task.status === 'done' ? 'bg-muted/50' : ''}>
                   <TableCell>
                     {task.status === 'done' ? (

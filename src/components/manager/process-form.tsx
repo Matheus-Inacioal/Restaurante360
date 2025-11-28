@@ -17,11 +17,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useFirebase, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, serverTimestamp } from 'firebase/firestore';
+import { collection, serverTimestamp, doc } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import type { ActivityTemplate } from '@/lib/types';
+import type { ActivityTemplate, Process, User, UserRole } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+
 
 const formSchema = z.object({
   name: z.string().min(3, 'O nome do processo deve ter pelo menos 3 caracteres.'),
@@ -41,13 +50,26 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
   const { toast } = useToast();
   const { firestore } = useFirebase();
   const { user } = useUser();
+  const [createdProcess, setCreatedProcess] = useState<Process | null>(null);
+  const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+
+  // State for the assignment dialog
+  const [assignedTo, setAssignedTo] = useState<string>('');
+  const [shift, setShift] = useState<'Manhã' | 'Tarde' | 'Noite'>('Manhã');
+  const [date, setDate] = useState<Date | undefined>(new Date());
 
   const activitiesColRef = useMemoFirebase(() => {
     if (!user || !firestore) return null;
     return collection(firestore, `users/${user.uid}/activityTemplates`);
   }, [user, firestore]);
 
-  const { data: activities, isLoading } = useCollection<ActivityTemplate>(activitiesColRef);
+  const usersColRef = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'users');
+  }, [firestore]);
+
+  const { data: activities, isLoading: isLoadingActivities } = useCollection<ActivityTemplate>(activitiesColRef);
+  const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersColRef);
 
   const form = useForm<ProcessFormValues>({
     resolver: zodResolver(formSchema),
@@ -70,19 +92,28 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
 
     try {
       const processesCollection = collection(firestore, 'processes');
-      addDocumentNonBlocking(processesCollection, {
+      const newProcessData = {
         ...values,
         isActive: true,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      
+      const docRef = await addDocumentNonBlocking(processesCollection, newProcessData);
 
       toast({
         title: 'Processo criado com sucesso!',
-        description: `O processo "${values.name}" foi salvo.`,
+        description: `O processo "${values.name}" foi salvo. Agora atribua a um colaborador.`,
       });
-      onSuccess();
+      
+      // We don't have the ID immediately, but we have the data.
+      // For the dialog, we'll construct a temporary process object.
+      // The ID isn't strictly needed for checklist creation itself.
+      setCreatedProcess({ id: docRef.id, ...values, isActive: true, createdBy: user.uid, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      setIsAssignDialogOpen(true); // Open the assignment dialog
+      form.reset();
+
     } catch (error) {
       console.error('Error saving process: ', error);
       toast({
@@ -93,7 +124,58 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
     }
   }
 
+  const handleAssignChecklist = async () => {
+    if (!firestore || !user || !createdProcess || !assignedTo || !date) {
+        toast({ title: "Erro", description: "Por favor, preencha todos os campos para atribuir o checklist.", variant: "destructive" });
+        return;
+    }
+
+    // 1. Get the full activity objects for the selected IDs
+    const selectedActivities = activities?.filter(a => createdProcess.activityIds.includes(a.id)) || [];
+
+    // 2. Transform activities into task instances
+    const tasks = selectedActivities.map(activity => ({
+        id: doc(collection(firestore, '_')).id, // Generate a new unique ID for the sub-collection item
+        activityTemplateId: activity.id,
+        title: activity.title,
+        description: activity.description,
+        requiresPhoto: activity.requiresPhoto,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    }));
+
+    // 3. Create the checklist instance
+    const checklistData = {
+        date: format(date, 'yyyy-MM-dd'),
+        shift,
+        assignedTo,
+        processName: createdProcess.name,
+        processId: createdProcess.id,
+        status: 'open',
+        tasks: tasks, // Embed tasks directly
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    };
+
+    try {
+        await addDocumentNonBlocking(collection(firestore, 'checklists'), checklistData);
+        toast({
+            title: "Checklist Atribuído!",
+            description: `O processo "${createdProcess.name}" foi atribuído com sucesso.`
+        });
+        setIsAssignDialogOpen(false);
+        setCreatedProcess(null);
+        onSuccess(); // Close the main sheet
+    } catch (error) {
+        console.error("Error assigning checklist: ", error);
+        toast({ title: "Erro ao Atribuir", description: "Não foi possível criar o checklist.", variant: "destructive" });
+    }
+  };
+
   return (
+    <>
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <FormField
@@ -138,7 +220,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
               </div>
                <ScrollArea className="h-72 w-full rounded-md border">
                 <div className="p-4">
-              {isLoading && <p>Carregando atividades...</p>}
+              {isLoadingActivities && <p>Carregando atividades...</p>}
               {activities?.map((item) => (
                 <FormField
                   key={item.id}
@@ -181,10 +263,80 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
 
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? 'Salvando...' : 'Criar Processo'}
+            {form.formState.isSubmitting ? 'Salvando...' : 'Criar Processo e Atribuir'}
           </Button>
         </div>
       </form>
     </Form>
+
+    <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Atribuir Checklist</DialogTitle>
+                <DialogDescription>
+                    O processo "{createdProcess?.name}" foi criado. Agora atribua-o como um checklist para um colaborador.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="assign-user">Colaborador</Label>
+                    <Select onValueChange={setAssignedTo} value={assignedTo}>
+                        <SelectTrigger id="assign-user">
+                            <SelectValue placeholder="Selecione um colaborador" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {isLoadingUsers && <SelectItem value="loading" disabled>Carregando...</SelectItem>}
+                            {users?.filter(u => u.role !== 'gestor').map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="grid gap-2">
+                    <Label htmlFor="assign-shift">Turno</Label>
+                    <Select onValueChange={(v) => setShift(v as 'Manhã' | 'Tarde' | 'Noite')} value={shift}>
+                        <SelectTrigger id="assign-shift">
+                            <SelectValue placeholder="Selecione o turno" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="Manhã">Manhã</SelectItem>
+                            <SelectItem value="Tarde">Tarde</SelectItem>
+                            <SelectItem value="Noite">Noite</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="grid gap-2">
+                    <Label>Data</Label>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                            "justify-start text-left font-normal",
+                            !date && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {date ? format(date, "PPP") : <span>Escolha uma data</span>}
+                        </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                        <Calendar
+                            mode="single"
+                            selected={date}
+                            onSelect={setDate}
+                            initialFocus
+                        />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => { setIsAssignDialogOpen(false); onSuccess(); }}>Pular</Button>
+                <Button onClick={handleAssignChecklist}>Atribuir Checklist</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }

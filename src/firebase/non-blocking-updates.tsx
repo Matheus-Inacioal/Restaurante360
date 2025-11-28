@@ -5,6 +5,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  collection,
   CollectionReference,
   DocumentReference,
   SetOptions,
@@ -39,6 +40,7 @@ export function setDocumentNonBlocking(docRef: DocumentReference, data: any, opt
 export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
   const promise = addDoc(colRef, data)
     .catch(error => {
+      console.error("Firebase Add Error:", error);
       errorEmitter.emit(
         'permission-error',
         new FirestorePermissionError({
@@ -47,6 +49,8 @@ export function addDocumentNonBlocking(colRef: CollectionReference, data: any) {
           requestResourceData: data,
         })
       )
+      // Re-throw the error to be caught by the caller if they are awaiting
+      throw error;
     });
   return promise;
 }
