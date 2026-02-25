@@ -27,7 +27,7 @@ interface NavItem {
 
 const managerNavItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/dashboard/tasks', label: 'Tarefas', icon: ClipboardCheck },
+  { href: '/dashboard/tarefas', label: 'Tarefas', icon: ClipboardCheck },
   { href: '/dashboard/routines', label: 'Rotinas', icon: CalendarClock },
   { href: '/dashboard/processes', label: 'Processos', icon: BookOpen },
   { href: '/dashboard/users', label: 'Usuários', icon: Users },

@@ -30,8 +30,8 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                         Nenhuma pendência ou rotina crítica no momento.
                     </p>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                            <Link href="/dashboard/tasks">Criar tarefa</Link>
+                        <Button variant="outline" size="sm" asChild className="hidden sm:flex text-xs h-7">
+                            <Link href="/dashboard/tarefas">Ver Todas</Link>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
                             <Link href="/dashboard/routines">Criar rotina</Link>
