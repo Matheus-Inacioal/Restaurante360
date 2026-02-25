@@ -6,18 +6,23 @@ import {
   SidebarContent,
   SidebarHeader,
   SidebarFooter,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
   SidebarInset,
   SidebarProvider,
+  SidebarSeparator,
 } from '@/components/ui/sidebar';
 import { Header } from '@/components/header';
 import { MainNav } from '@/components/main-nav';
 import { useUser, useDoc, useMemoFirebase } from '@/firebase';
 import { useFirebase } from '@/firebase/provider';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import type { User, UserRole } from '@/lib/types';
 import { doc } from 'firebase/firestore';
+import { LifeBuoy } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -27,6 +32,7 @@ export default function DashboardLayout({
   const { user, isUserLoading } = useUser();
   const { firestore } = useFirebase();
   const router = useRouter();
+  const pathname = usePathname();
 
   const userDocRef = useMemoFirebase(() => {
     if (!user || isUserLoading) return null;
@@ -49,9 +55,9 @@ export default function DashboardLayout({
   }
 
   if (!currentUser) {
-     // This can happen briefly if the user doc is being created.
-     // Or if something went wrong during signup. We redirect to login to be safe.
-     // The useEffect above will handle the redirect if the user object itself is null.
+    // This can happen briefly if the user doc is being created.
+    // Or if something went wrong during signup. We redirect to login to be safe.
+    // The useEffect above will handle the redirect if the user object itself is null.
     return <div className="flex h-screen items-center justify-center">Verificando perfil do usuário... Pode ser necessário fazer login novamente.</div>;
   }
 
@@ -63,23 +69,33 @@ export default function DashboardLayout({
   };
 
   const pageTitle = getDashboardTitle(currentUser.role);
+  const isHelpActive = pathname?.startsWith('/dashboard/ajuda');
 
   return (
     <SidebarProvider>
       <Sidebar side="left" variant="sidebar" collapsible="icon">
         <SidebarHeader className="p-4">
-            <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg text-sidebar-foreground hover:text-sidebar-primary transition-colors">
-                <div className="p-2 bg-sidebar-primary rounded-lg">
-                    <UtensilsCrossed className="h-6 w-6 text-sidebar-primary-foreground" />
-                </div>
-                <span className="font-headline group-data-[collapsible=icon]:hidden">
-                    restaurante360
-                </span>
-            </Link>
+          <Link href="/dashboard" className="flex items-center gap-2 font-bold text-lg text-sidebar-foreground hover:text-sidebar-primary transition-colors">
+            <div className="p-2 bg-sidebar-primary rounded-lg">
+              <UtensilsCrossed className="h-6 w-6 text-sidebar-primary-foreground" />
+            </div>
+            <span className="font-headline group-data-[collapsible=icon]:hidden">
+              restaurante360
+            </span>
+          </Link>
         </SidebarHeader>
         <MainNav role={currentUser.role} />
-        <SidebarFooter>
-          {/* Footer content if any */}
+        <SidebarFooter className="p-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={isHelpActive} tooltip="Ajuda">
+                <Link href="/dashboard/ajuda">
+                  <LifeBuoy className="h-5 w-5" />
+                  <span>Ajuda</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>

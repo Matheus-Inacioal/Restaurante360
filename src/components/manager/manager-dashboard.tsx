@@ -1,233 +1,161 @@
 'use client';
 
-import {
-  Activity,
-  ArrowUpRight,
-  CheckSquare,
-  Clock,
-  LogIn,
-  Users,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { useCollection, useFirebase, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { useFirebase, useCollection, useUser } from '@/firebase';
+import { Search, Plus, Play, Calendar as CalendarIcon } from 'lucide-react';
+import { collection, query, where } from 'firebase/firestore';
 import type { ChecklistInstance, User } from '@/lib/types';
-import { useMemo } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+// Import dos novos componentes modulares
+import { DashboardCards } from './dashboard-cards';
+import { PrioritiesList, type PriorityItem } from './priorities-list';
+import { ActivityFeed, type FeedItem } from './activity-feed';
+import { DashboardCharts, type ChartDataPoint } from './dashboard-charts';
 
 export function ManagerDashboard() {
-    const { firestore } = useFirebase();
-    const { user, isUserLoading } = useUser();
-    const today = new Date().toISOString().split('T')[0];
+  const { firestore } = useFirebase();
+  const { user, isUserLoading } = useUser();
+  const [period, setPeriod] = useState('hoje');
 
-    const checklistsQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !user) return null;
-        return query(collection(firestore, 'checklists'), where('createdBy', '==', user.uid), where('date', '==', today));
-    }, [firestore, today, user, isUserLoading]);
+  // Tratamento da data contextual
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' };
+  const todayDateString = new Date().toLocaleDateString('pt-BR', dateOptions);
+  const formattedDate = todayDateString.charAt(0).toUpperCase() + todayDateString.slice(1);
 
-    const usersQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return collection(firestore, 'users');
-    }, [firestore]);
-    
-    const { data: checklistsDoDiaData, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
-    const { data: usersData, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
+  // --- Opcional: Futura integração real de queries abaixo ---
+  // const today = new Date().toISOString().split('T')[0];
+  // const checklistsQuery = useMemoFirebase(() => { ... });
+  // const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
+  // -----------------------------------------------------------
 
-    const { checklistsDoDia, checkinsDoDia, tarefasAtrasadas, chartData, recentChecklists } = useMemo(() => {
-        if (!checklistsDoDiaData || !usersData) {
-            const emptyChartData = [
-                { status: 'Concluído', total: 0, fill: 'hsl(var(--primary))' },
-                { status: 'Em Progresso', total: 0, fill: 'hsl(var(--accent))' },
-                { status: 'Pendente', total: 0, fill: 'hsl(var(--muted-foreground))' },
-            ];
-            return { checklistsDoDia: 0, checkinsDoDia: 0, tarefasAtrasadas: 0, chartData: emptyChartData, recentChecklists: [] };
-        }
+  // ==========================================
+  // MOCKS DE DADOS UI - PARA DEMONSTRAÇÃO DO LAYOUT
+  // ==========================================
 
-        const counts = checklistsDoDiaData.reduce((acc, checklist) => {
-            if (checklist.status === 'completed') acc.completed++;
-            if (checklist.status === 'in_progress') acc.in_progress++;
-            if (checklist.status === 'open') acc.open++;
-            return acc;
-        }, { completed: 0, in_progress: 0, open: 0 });
+  // Dashboard Metrics
+  const metrics = {
+    pendingCritical: 2,
+    executionTodayCompleted: 14,
+    executionTodayTotal: 25,
+    activeTeam: 8
+  };
 
-        const uniqueCheckinUsers = new Set(checklistsDoDiaData.map(c => c.assignedTo));
+  // Priorities (Atrasadas primeiro, depois hoje)
+  const prioritiesMock: PriorityItem[] = [
+    { id: '1', type: 'rotina', title: 'Abertura de Caixa', assignee: 'Maria Souza', deadline: '09:00', status: 'atrasado' },
+    { id: '2', type: 'tarefa', title: 'Reposição Limpeza', assignee: 'João Silva', deadline: '10:30', status: 'atrasado' },
+    { id: '3', type: 'processo', title: 'Inspeção Sanitária', assignee: 'Carlos Gerente', deadline: '14:00', status: 'hoje' },
+    { id: '4', type: 'rotina', title: 'Troca de Turno', assignee: 'Equipe Tarde', deadline: '15:00', status: 'hoje' },
+    { id: '5', type: 'tarefa', title: 'Auditoria de Estoque', assignee: 'Ana Clara', deadline: '18:00', status: 'hoje' },
+  ];
 
-        const newChartData = [
-            { status: 'Concluído', total: counts.completed, fill: 'hsl(var(--primary))' },
-            { status: 'Em Progresso', total: counts.in_progress, fill: 'hsl(var(--accent))' },
-            { status: 'Pendente', total: counts.open, fill: 'hsl(var(--muted-foreground))' },
-        ];
-        
-        const atrasadas = counts.in_progress + counts.open;
-        
-        const usersMap = new Map(usersData.map(u => [u.id, u.name]));
-        
-        const sortedRecent = [...checklistsDoDiaData]
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5)
-          .map(checklist => ({
-              ...checklist,
-              assignedToName: usersMap.get(checklist.assignedTo) || checklist.assignedTo
-          }));
+  // Feed (Recentes)
+  const feedMock: FeedItem[] = [
+    { id: 'f1', user: 'Maria Souza', initials: 'MS', action: 'concluiu a rotina', target: 'Abertura de Caixa (Ontem)', time: 'há 10 min' },
+    { id: 'f2', user: 'João Silva', initials: 'JS', action: 'anexou uma foto em', target: 'Manutenção Freezer', time: 'há 45 min' },
+    { id: 'f3', user: 'Carlos Gerente', initials: 'CG', action: 'criou o processo', target: 'Treinamento Novatos', time: 'há 1 hora' },
+    { id: 'f4', user: 'Ana Clara', initials: 'AC', action: 'concluiu a tarefa', target: 'Reposição Bebidas', time: 'há 2 horas' },
+  ];
 
-
-        return {
-            checklistsDoDia: checklistsDoDiaData.length,
-            checkinsDoDia: uniqueCheckinUsers.size,
-            tarefasAtrasadas: atrasadas,
-            chartData: newChartData,
-            recentChecklists: sortedRecent,
-        };
-    }, [checklistsDoDiaData, usersData]);
-
-    const isLoading = isLoadingChecklists || isLoadingUsers;
+  // Chart
+  const chartMock: ChartDataPoint[] = [
+    { name: 'Concluído', value: 45, color: 'hsl(var(--primary))' },
+    { name: 'Em Progresso', value: 30, color: 'hsl(var(--accent))' },
+    { name: 'Pendente', value: 25, color: 'hsl(var(--muted-foreground))' },
+  ];
 
   return (
-    <div>
-      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Checklists do Dia
-            </CardTitle>
-            <CheckSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : checklistsDoDia}</div>
-            <p className="text-xs text-muted-foreground">
-              Total de checklists para hoje
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Pendentes / Em Progresso
-            </CardTitle>
-            <Clock className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{isLoading ? '...' : tarefasAtrasadas}</div>
-            <p className="text-xs text-muted-foreground">
-              Checklists que precisam de atenção
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Check-ins do Dia</CardTitle>
-            <LogIn className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{isLoading ? '...' : checkinsDoDia}</div>
-            <p className="text-xs text-muted-foreground">
-              Colaboradores com tarefas hoje
-            </p>
-          </CardContent>
-        </Card>
+    <div className="flex flex-col space-y-6">
+
+      {/* 1. TOPO DO DASHBOARD: Data, Filtro e Ações Rápidas */}
+      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Dashboard do Gestor</h2>
+          <p className="text-muted-foreground flex items-center gap-2 mt-1">
+            <CalendarIcon className="h-4 w-4" /> {formattedDate}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <Tabs value={period} onValueChange={setPeriod} className="w-full sm:w-auto">
+            <TabsList className="grid w-full grid-cols-3 sm:w-auto">
+              <TabsTrigger value="hoje">Hoje</TabsTrigger>
+              <TabsTrigger value="semana">Semana</TabsTrigger>
+              <TabsTrigger value="mes">Mês</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Buscar tarefas, rotinas..."
+              className="pl-8 w-full bg-background"
+            />
+          </div>
+        </div>
       </div>
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Visão Geral dos Checklists</CardTitle>
-            <CardDescription>Status dos checklists do dia.</CardDescription>
-          </CardHeader>
-          <CardContent className="pl-2">
-            <ResponsiveContainer width="100%" height={350}>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="status"
-                  stroke="#888888"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#888888"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => `${value}`}
-                />
-                <Tooltip
-                  cursor={{ fill: 'hsla(var(--muted))' }}
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--background))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: 'var(--radius)',
-                  }}
-                />
-                <Bar dataKey="total" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Checklists Recentes</CardTitle>
-            <CardDescription>
-              Progresso dos checklists mais recentes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-                <TableHeader>
-                    <TableRow>
-                        <TableHead>Colaborador</TableHead>
-                        <TableHead className="text-right">Status</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {isLoading && <TableRow><TableCell colSpan={2} className="text-center">Carregando...</TableCell></TableRow>}
-                    {!isLoading && recentChecklists && recentChecklists.map((checklist) => (
-                        <TableRow key={checklist.id}>
-                            <TableCell>
-                                <div className="font-medium">{checklist.assignedToName}</div>
-                                <div className="text-sm text-muted-foreground">{checklist.processName}</div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                                <Badge variant={
-                                    checklist.status === 'completed' ? 'default' :
-                                    checklist.status === 'in_progress' ? 'secondary' : 'outline'
-                                }
-                                className={checklist.status === 'completed' ? 'bg-green-600 text-white' : ''}
-                                >{checklist.status}</Badge>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+
+      {/* Ações Rápidas (Nova Linha Base) */}
+      <div className="flex flex-wrap items-center gap-2 pb-2">
+        <Button size="sm" className="h-8" asChild>
+          <Link href="/dashboard/tasks">
+            <Plus className="mr-2 h-4 w-4" /> Criar tarefa
+          </Link>
+        </Button>
+        <Button size="sm" variant="outline" className="h-8" asChild>
+          <Link href="/dashboard/routines">
+            <Plus className="mr-2 h-4 w-4" /> Criar rotina
+          </Link>
+        </Button>
+        <Button size="sm" variant="outline" className="h-8" asChild>
+          <Link href="/dashboard/processes">
+            <Plus className="mr-2 h-4 w-4" /> Criar processo
+          </Link>
+        </Button>
+        <Button size="sm" variant="secondary" className="h-8 bg-primary/10 text-primary hover:bg-primary/20" asChild>
+          <Link href="/dashboard/processes">
+            <Play className="mr-2 h-4 w-4" /> Executar processo
+          </Link>
+        </Button>
       </div>
+
+      {/* 2. CARDS PRINCIPAIS */}
+      <DashboardCards
+        pendingCritical={metrics.pendingCritical}
+        executionTodayCompleted={metrics.executionTodayCompleted}
+        executionTodayTotal={metrics.executionTodayTotal}
+        activeTeam={metrics.activeTeam}
+      />
+
+      {/* 3. ÁREA CENTRAL: Prioridades e Feed + Grafícos */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+
+        {/* Coluna Esquerda: Master (Prioridades) */}
+        <div className="col-span-1 lg:col-span-4 flex flex-col gap-6">
+          <PrioritiesList items={prioritiesMock} />
+        </div>
+
+        {/* Coluna Direita (Atividade e Gráfico Reduzido) */}
+        <div className="col-span-1 lg:col-span-3 flex flex-col gap-6">
+
+          <div className="h-1/2 min-h-[300px]">
+            <ActivityFeed items={feedMock} />
+          </div>
+
+          <div className="h-1/2 min-h-[300px]">
+            <DashboardCharts data={chartMock} />
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   );
+}
