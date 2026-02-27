@@ -7,6 +7,12 @@ export interface ItemVerificacao {
     concluido: boolean;
 }
 
+export interface OrigemTarefa {
+    tipo: "rotina";
+    rotinaId: string;
+    dataReferencia: string; // YYYY-MM-DD
+}
+
 export interface Tarefa {
     id: string;
     empresaId: string;
@@ -19,6 +25,7 @@ export interface Tarefa {
     prazo?: string; // ISO
     tags?: string[];
     itensVerificacao?: ItemVerificacao[];
+    origem?: OrigemTarefa;
     criadoPor: string;
     criadoEm: string; // ISO
     atualizadoEm: string; // ISO

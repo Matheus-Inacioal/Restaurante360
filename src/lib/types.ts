@@ -29,6 +29,7 @@ export type ActivityTemplate = {
 export type Process = {
   id: string;
   name: string;
+  categoryId?: string;
   description: string;
   activityIds: string[];
   isActive: boolean;
@@ -40,7 +41,7 @@ export type Process = {
 export type TaskStatus = 'pending' | 'done' | 'not_applicable';
 
 export type TaskInstance = {
-  id:string;
+  id: string;
   checklistId: string;
   activityTemplateId: string;
   title: string;
@@ -70,9 +71,9 @@ export type ChecklistInstance = {
 };
 
 export type CheckIn = {
-    id: string;
-    userId: string;
-    date: string;
-    shift: string;
-    createdAt: string;
+  id: string;
+  userId: string;
+  date: string;
+  shift: string;
+  createdAt: string;
 }
