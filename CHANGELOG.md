@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-03-01
+
+### Adicionado
+- **Busca Global**: Implementação do Command Palette (Cmd+K) categorizando resultados de tarefas, rotinas, processos e usuários, com navegação rápida.
+- **Notificações**: Central de notificações funcional no cabeçalho com contador em tempo real, dropdown interativo e ações de leitura usando persistência local.
+- **Configurações de Usuário**: Nova tela de gerenciamento (`/dashboard/configuracoes`) subdividida analiticamente nas guias Conta, Preferências, Segurança e Privacidade LGPD.
+- **Seletor de Período Customizado**: Componente interativo de calendário (date range popover) adicionado na tela de relatórios para filtragem.
+- **Exportação Multiformato Avançada**: Nova capacidade de exportar relatórios gerenciais combinando todas as abas ativas em um único pacote `.xlsx`.
+
+### Alterado
+- **Cabeçalho Principal (Topbar)**: Refatoração substituindo barras de pesquisa passivas e ícones estáticos pela montagem dos novos widgets funcionais acoplados.
+
+### Técnico
+- `deps`: Inclusão das primitivas de acessibilidade do Radix UI (Popover, Command, Tabs) via shadcn/ui.
+- `deps`: Bibliotecas base (`cmdk`, `date-fns`, `xlsx`, `uuid`).
+- Correções de tipagem e padronização da importação do core UI em páginas relativas.
+
+
 ## [0.4.0] - 2026-02-25
 
 ### Arquitetura e Engenharia (Padrão SaaS)

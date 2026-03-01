@@ -3,6 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, CheckCircle2, ChevronRight, FileText, ClipboardList } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
+import { DrawerDetalhesTarefa } from "@/components/tarefas/drawer-detalhes-tarefa";
+import { useTarefas } from "@/hooks/use-tarefas";
 
 export type PriorityItem = {
     id: string;
@@ -14,6 +17,11 @@ export type PriorityItem = {
 };
 
 export function PrioritiesList({ items }: { items: PriorityItem[] }) {
+    const { tarefas } = useTarefas();
+    const [tarefaIdSelecionada, setTarefaIdSelecionada] = useState<string | null>(null);
+
+    const tarefaSelecionada = tarefas.find(t => t.id === tarefaIdSelecionada) || null;
+
     if (!items || items.length === 0) {
         return (
             <Card className="h-full">
@@ -73,7 +81,13 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 ml-4 shrink-0">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Ver detalhes">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
+                                    title="Ver detalhes"
+                                    onClick={() => setTarefaIdSelecionada(item.id)}
+                                >
                                     <ChevronRight className="h-4 w-4" />
                                 </Button>
                             </div>
@@ -81,6 +95,12 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                     ))}
                 </div>
             </CardContent>
+
+            <DrawerDetalhesTarefa
+                aberta={!!tarefaIdSelecionada}
+                tarefaSelecionada={tarefaSelecionada}
+                aoFechar={() => setTarefaIdSelecionada(null)}
+            />
         </Card>
     );
 }

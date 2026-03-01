@@ -24,6 +24,8 @@ import Link from 'next/link';
 import { useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
+import { BuscaGlobal } from '@/components/topbar/busca-global';
+import { Notificacoes } from '@/components/topbar/notificacoes';
 
 interface HeaderProps {
   user: User;
@@ -35,7 +37,7 @@ export function Header({ user, title }: HeaderProps) {
     .split(' ')
     .map((n) => n[0])
     .join('');
-  
+
   const auth = useAuth();
   const router = useRouter();
 
@@ -52,19 +54,9 @@ export function Header({ user, title }: HeaderProps) {
           {title}
         </h1>
       </div>
-      <div className="ml-auto flex items-center gap-4">
-        <form className="relative hidden md:block">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Buscar..."
-            className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px] bg-background"
-          />
-        </form>
-        <Button variant="ghost" size="icon" className="rounded-full">
-          <Bell className="h-5 w-5" />
-          <span className="sr-only">Toggle notifications</span>
-        </Button>
+      <div className="ml-auto flex items-center gap-2 sm:gap-4">
+        <BuscaGlobal />
+        <Notificacoes />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full">
@@ -77,9 +69,11 @@ export function Header({ user, title }: HeaderProps) {
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Configurações</span>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/configuracoes" className="w-full cursor-pointer flex items-center">
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Configurações</span>
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
