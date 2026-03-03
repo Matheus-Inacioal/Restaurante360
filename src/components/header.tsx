@@ -28,11 +28,12 @@ import { BuscaGlobal } from '@/components/topbar/busca-global';
 import { Notificacoes } from '@/components/topbar/notificacoes';
 
 interface HeaderProps {
-  user: User;
+  user: { name: string, avatarUrl?: string };
   title: string;
+  configUrl: string;
 }
 
-export function Header({ user, title }: HeaderProps) {
+export function Header({ user, title, configUrl }: HeaderProps) {
   const userInitials = user.name
     .split(' ')
     .map((n) => n[0])
@@ -70,7 +71,7 @@ export function Header({ user, title }: HeaderProps) {
             <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/configuracoes" className="w-full cursor-pointer flex items-center">
+              <Link href={configUrl} className="w-full cursor-pointer flex items-center">
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Configurações</span>
               </Link>

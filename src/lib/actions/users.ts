@@ -16,20 +16,21 @@ interface NewUserData {
 let secondaryApp: import('firebase/app').FirebaseApp;
 
 if (!getApps().find(app => app.name === 'secondary')) {
-  secondaryApp = initializeApp(firebaseConfig, 'secondary');
+    secondaryApp = initializeApp(firebaseConfig, 'secondary');
 } else {
-  secondaryApp = getApps().find(app => app.name === 'secondary')!;
+    secondaryApp = getApps().find(app => app.name === 'secondary')!;
 }
 
 const secondaryAuth = getAuth(secondaryApp);
 const secondaryFirestore = getFirestore(secondaryApp);
 
-export async function createUser(userData: NewUserData) {
+export async function createUser(userData: Omit<NewUserData, 'password'>) {
     try {
+        const randomPassword = Array(20).fill(0).map(() => Math.random().toString(36).charAt(2)).join('') + 'A1!';
         const userCredential = await createUserWithEmailAndPassword(
             secondaryAuth,
             userData.email,
-            userData.password
+            randomPassword
         );
         const user = userCredential.user;
 
@@ -43,7 +44,7 @@ export async function createUser(userData: NewUserData) {
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         });
-        
+
         return { uid: user.uid };
     } catch (error: any) {
         if (error.code === 'auth/email-already-in-use') {

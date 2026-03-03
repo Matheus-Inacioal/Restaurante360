@@ -29,7 +29,7 @@ import { serverTimestamp } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 interface EnrichedTask extends TaskInstance {
-    processName?: string;
+  processName?: string;
 }
 
 export function CollaboratorDashboard() {
@@ -45,9 +45,9 @@ export function CollaboratorDashboard() {
   const checklistsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(
-        collection(firestore, 'checklists'), 
-        where('assignedTo', '==', user.uid),
-        where('date', '==', todayStr)
+      collection(firestore, 'checklists'),
+      where('assignedTo', '==', user.uid),
+      where('date', '==', todayStr)
     );
   }, [firestore, user, todayStr]);
 
@@ -56,7 +56,7 @@ export function CollaboratorDashboard() {
   const collaboratorTasks: EnrichedTask[] = useMemo(() => {
     if (!checklists) return [];
     return checklists
-      .flatMap(c => (c.tasks || []).map(t => ({...t, processName: c.processName})))
+      .flatMap(c => (c.tasks || []).map(t => ({ ...t, processName: c.processName })))
       .slice(0, 4);
   }, [checklists]);
 
@@ -64,10 +64,10 @@ export function CollaboratorDashboard() {
   const handleCheckIn = () => {
     if (!user || !firestore) return;
     addDocumentNonBlocking(collection(firestore, 'checkIns'), {
-        userId: user.uid,
-        date: new Date().toISOString().split('T')[0],
-        shift: 'Manhã', // This could be dynamic
-        createdAt: serverTimestamp(),
+      userId: user.uid,
+      date: new Date().toISOString().split('T')[0],
+      shift: 'Manhã', // This could be dynamic
+      createdAt: serverTimestamp(),
     });
     setIsCheckedIn(true);
     toast({
@@ -108,11 +108,11 @@ export function CollaboratorDashboard() {
         <CardHeader>
           <div className='flex justify-between items-center'>
             <div>
-                <CardTitle>Minhas Tarefas de Hoje</CardTitle>
-                <CardDescription>Aqui estão as suas tarefas pendentes para o turno.</CardDescription>
+              <CardTitle>Minhas Tarefas de Hoje</CardTitle>
+              <CardDescription>Aqui estão as suas tarefas pendentes para o turno.</CardDescription>
             </div>
             <Button asChild variant="outline">
-                <Link href="/dashboard/collaborator/tasks">Ver Todas</Link>
+              <Link href="/operacional">Ver Todas</Link>
             </Button>
           </div>
         </CardHeader>
@@ -127,9 +127,9 @@ export function CollaboratorDashboard() {
             </TableHeader>
             <TableBody>
               {isLoadingChecklists && (
-                  <TableRow>
-                      <TableCell colSpan={3} className="text-center">Carregando tarefas...</TableCell>
-                  </TableRow>
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center">Carregando tarefas...</TableCell>
+                </TableRow>
               )}
               {!isLoadingChecklists && collaboratorTasks.length === 0 && (
                 <TableRow>
@@ -140,9 +140,9 @@ export function CollaboratorDashboard() {
                 <TableRow key={task.id}>
                   <TableCell>
                     {task.status === 'done' ? (
-                       <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
                     ) : (
-                       <Circle className="h-5 w-5 text-muted-foreground" />
+                      <Circle className="h-5 w-5 text-muted-foreground" />
                     )}
                   </TableCell>
                   <TableCell>
@@ -156,9 +156,9 @@ export function CollaboratorDashboard() {
                         <span>{new Date(task.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     ) : (
-                       <Button asChild variant="ghost" size="sm">
-                           <Link href="/dashboard/collaborator/tasks">Ver</Link>
-                       </Button>
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href="/operacional">Ver</Link>
+                      </Button>
                     )}
                   </TableCell>
                 </TableRow>

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { UsuarioSistema } from "../lib/types/usuarios";
 import { repositorioUsuarios } from "../lib/repositories/usuarios-repository";
-import { gerarSalt, hashSenhaSHA256 } from "@/lib/seguranca/criptografia";
 import { useToast } from "@/hooks/use-toast";
 
 export function useUsuarios() {
@@ -37,22 +36,10 @@ export function useUsuarios() {
     }, [carregarUsuarios]);
 
     const adicionarUsuario = async (
-        dados: Omit<UsuarioSistema, "id" | "criadoEm" | "atualizadoEm">,
-        senhaPlana?: string
+        dados: Omit<UsuarioSistema, "id" | "criadoEm" | "atualizadoEm">
     ) => {
         try {
             const payload = { ...dados };
-
-            if (senhaPlana) {
-                const salt = gerarSalt();
-                const senhaHash = await hashSenhaSHA256(senhaPlana, salt);
-                payload.credenciaisLocal = {
-                    senhaHash,
-                    salt,
-                    algoritmo: "SHA-256",
-                    atualizadoEm: new Date().toISOString(),
-                };
-            }
 
             const novo = await repositorioUsuarios.criarUsuario(payload);
             setUsuarios((prev) => [...prev, novo]);
@@ -92,36 +79,7 @@ export function useUsuarios() {
         }
     };
 
-    const alterarSenha = async (id: string, novaSenhaPlana: string) => {
-        try {
-            const salt = gerarSalt();
-            const senhaHash = await hashSenhaSHA256(novaSenhaPlana, salt);
 
-            const atualizado = await repositorioUsuarios.atualizarUsuario(id, {
-                credenciaisLocal: {
-                    senhaHash,
-                    salt,
-                    algoritmo: "SHA-256",
-                    atualizadoEm: new Date().toISOString(),
-                }
-            });
-
-            setUsuarios((prev) => prev.map((u) => (u.id === id ? atualizado : u)));
-
-            toast({
-                title: "Senha Redefinida",
-                description: "A senha do usuário foi alterada com sucesso.",
-            });
-            return atualizado;
-        } catch (error: any) {
-            toast({
-                title: "Erro na Redefinição",
-                description: error.message || "Não foi possível redefinir a senha do usuário.",
-                variant: "destructive",
-            });
-            throw error;
-        }
-    };
 
     const inativar = async (id: string, nomeUsuario: string) => {
         try {
@@ -172,7 +130,6 @@ export function useUsuarios() {
         vazio: !isCarregando && usuarios.length === 0,
         adicionarUsuario,
         editarUsuario,
-        alterarSenha,
         inativar,
         reativar,
         recarregarUsuarios: carregarUsuarios,

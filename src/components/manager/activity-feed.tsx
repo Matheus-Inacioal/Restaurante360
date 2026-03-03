@@ -66,7 +66,7 @@ export function ActivityFeed({ items }: { items: FeedItem[] }) {
             </CardContent>
             <div className="p-4 pt-0 mt-auto border-t mt-4 flex items-center justify-center">
                 <Button variant="link" size="sm" asChild className="text-muted-foreground h-auto p-0 mt-2">
-                    <Link href="/dashboard/reports">Ver histórico completo</Link>
+                    <Link href="/empresa/relatorios">Ver histórico completo</Link>
                 </Button>
             </div>
         </Card>

@@ -28,6 +28,7 @@ import { useTarefas } from "@/hooks/use-tarefas";
 import type { Tarefa, StatusTarefa } from "@/lib/types/tarefas";
 import { CheckCircle2, Copy, ExternalLink, Calendar as CalendarIcon, User, Tag, LayoutList } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { usePerfil } from "@/hooks/use-perfil";
 
 interface DrawerDetalhesTarefaProps {
     aberta: boolean;
@@ -45,6 +46,8 @@ export function DrawerDetalhesTarefa({ aberta, aoFechar, tarefaSelecionada: tare
     const router = useRouter();
     const { toast } = useToast();
     const { atualizarTarefa, atualizarStatusTarefa, adicionarTarefa } = useTarefas();
+    const { perfil } = usePerfil();
+    const basePath = perfil?.papelEmpresa === 'operacional' ? '/operacional' : '/empresa/tarefas';
 
     if (!tarefa) {
         return (
@@ -123,7 +126,7 @@ export function DrawerDetalhesTarefa({ aberta, aoFechar, tarefaSelecionada: tare
 
     const handleAbrirTelaTarefas = () => {
         // Redireciona e opcionalmente pode passar query param pra abrir a task lá
-        router.push(`/dashboard/tarefas?tarefaId=${tarefa.id}`);
+        router.push(`${basePath}?tarefaId=${tarefa.id}`);
         aoFechar();
     };
 

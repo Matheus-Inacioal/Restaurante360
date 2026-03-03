@@ -1,4 +1,4 @@
-export type UserRole = 'manager' | 'collaborator' | 'gestor' | 'bar' | 'pia' | 'cozinha' | 'producao' | 'garcon';
+export type UserRole = 'manager' | 'collaborator' | 'gestor' | 'bar' | 'pia' | 'cozinha' | 'producao' | 'garcon' | 'admin' | 'operacional';
 
 export type User = {
   id: string;
@@ -77,3 +77,4 @@ export type CheckIn = {
   shift: string;
   createdAt: string;
 }
+\nexport * from './types/perfil-usuario';\n

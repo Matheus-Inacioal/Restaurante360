@@ -104,22 +104,22 @@ export function ManagerDashboard() {
       {/* Ações Rápidas (Nova Linha Base) */}
       <div className="flex flex-wrap items-center gap-2 pb-2">
         <Button size="sm" className="h-8" asChild>
-          <Link href="/dashboard/tasks">
+          <Link href="/empresa/tarefas">
             <Plus className="mr-2 h-4 w-4" /> Criar tarefa
           </Link>
         </Button>
         <Button size="sm" variant="outline" className="h-8" asChild>
-          <Link href="/dashboard/routines">
+          <Link href="/empresa/rotinas">
             <Plus className="mr-2 h-4 w-4" /> Criar rotina
           </Link>
         </Button>
         <Button size="sm" variant="outline" className="h-8" asChild>
-          <Link href="/dashboard/processes">
+          <Link href="/empresa/processos">
             <Plus className="mr-2 h-4 w-4" /> Criar processo
           </Link>
         </Button>
         <Button size="sm" variant="secondary" className="h-8 bg-primary/10 text-primary hover:bg-primary/20" asChild>
-          <Link href="/dashboard/processes">
+          <Link href="/empresa/processos">
             <Play className="mr-2 h-4 w-4" /> Executar processo
           </Link>
         </Button>

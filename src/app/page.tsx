@@ -13,11 +13,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState, useEffect } from 'react';
-import { useAuth, useUser } from '@/firebase';
-import { 
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-} from 'firebase/auth';
+import { useAuth } from '@/hooks/use-auth';
+import { usePerfil } from '@/hooks/use-perfil';
+import { obterRotaInicialDoUsuario } from '@/lib/autenticacao/redirecionamento';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase/provider';
 import { useRouter } from 'next/navigation';
@@ -26,27 +25,38 @@ import { useToast } from '@/hooks/use-toast';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
+  const { auth } = useFirebase();
+  const { login, isCarregandoAuth } = useAuth();
+  const { perfil, isCarregandoPerfil } = usePerfil();
   const { firestore } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (user) {
-      router.push('/dashboard');
+    if (perfil) {
+      const rota = obterRotaInicialDoUsuario(perfil);
+      router.push(rota);
     }
-  }, [user, router]);
+  }, [perfil, router]);
 
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard');
+      if (!auth) throw new Error("Serviço Firebase indisponível.");
+      await login(email, password);
+      // O useEffect capturará a mudança de `perfil` e fará o redirect automaticamente.
+
     } catch (error: any) {
+      let errorMessage = 'Ocorreu um erro ao fazer login.';
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        errorMessage = 'Credenciais inválidas. Verifique seu e-mail e senha.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Muitas tentativas de login falhas. Tente novamente mais tarde.';
+      }
+
       toast({
         variant: 'destructive',
         title: 'Erro de Login',
-        description: 'Email ou senha inválidos. Por favor, tente novamente.',
+        description: errorMessage,
       });
       console.error('Error signing in:', error);
     }
@@ -64,7 +74,7 @@ export default function LoginPage() {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      
+
       const userRef = doc(firestore, 'users', user.uid);
       const userDoc = await getDoc(userRef);
 
@@ -79,8 +89,8 @@ export default function LoginPage() {
           updatedAt: new Date().toISOString(),
         });
       }
-      
-      router.push('/dashboard');
+
+      router.push('/empresa');
     } catch (error: any) {
       if (error.code === 'auth/email-already-in-use') {
         toast({
@@ -100,7 +110,7 @@ export default function LoginPage() {
     }
   };
 
-  if (isUserLoading || user) {
+  if (isCarregandoAuth || isCarregandoPerfil || perfil) {
     return <div className="flex min-h-screen w-full items-center justify-center bg-background"><p>Carregando...</p></div>;
   }
 
@@ -141,10 +151,10 @@ export default function LoginPage() {
                   Esqueceu sua senha?
                 </Link>
               </div>
-              <Input 
-                id="password" 
-                type="password" 
-                required 
+              <Input
+                id="password"
+                type="password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />

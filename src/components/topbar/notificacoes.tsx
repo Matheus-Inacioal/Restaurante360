@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/tooltip';
 
 import { useNotificacoes } from '@/hooks/use-notificacoes';
+import { usePerfil } from '@/hooks/use-perfil';
 import { CategoriaNotificacao, Notificacao } from '@/lib/types/notificacoes';
 import { cn } from '@/lib/utils';
 
@@ -47,6 +48,9 @@ export function Notificacoes() {
         marcarTodasComoLidas
     } = useNotificacoes();
 
+    const { perfil } = usePerfil();
+    const basePath = perfil?.papelEmpresa === 'operacional' ? '/operacional' : '/empresa';
+
     const handleAction = (notificacao: Notificacao) => {
         // Marca como lida
         if (!notificacao.lida) {
@@ -55,11 +59,11 @@ export function Notificacoes() {
 
         // Navegação contextual
         if (notificacao.origem === 'tarefas') {
-            router.push('/dashboard/tarefas');
+            router.push(`${basePath}/tarefas`);
         } else if (notificacao.origem === 'rotinas') {
-            router.push('/dashboard/routines');
+            router.push(`${basePath}/rotinas`);
         } else if (notificacao.origem === 'processos') {
-            router.push('/dashboard/processes');
+            router.push(`${basePath}/processos`);
         }
         setOpen(false);
     };
@@ -177,8 +181,7 @@ export function Notificacoes() {
                                 className="w-full text-xs"
                                 onClick={() => {
                                     setOpen(false);
-                                    // Rota teórica global no MVP para logs completos:
-                                    // router.push('/dashboard/notificacoes')
+                                    router.push(`${basePath}/notificacoes`);
                                 }}
                             >
                                 <MoreHorizontal className="h-3 w-3 mr-1" />

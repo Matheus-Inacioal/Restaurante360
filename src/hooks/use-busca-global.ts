@@ -38,7 +38,7 @@ export function useBuscaGlobal() {
                     titulo: t.titulo,
                     descricao: t.descricao,
                     categoria: 'Tarefas',
-                    url: `/dashboard/tarefas?id=${t.id}`,
+                    url: `/empresa/tarefas?id=${t.id}`,
                 });
             }
         });
@@ -54,7 +54,7 @@ export function useBuscaGlobal() {
                     titulo: r.titulo,
                     descricao: r.descricao,
                     categoria: 'Rotinas',
-                    url: `/dashboard/routines?id=${r.id}`,
+                    url: `/empresa/rotinas?id=${r.id}`,
                 });
             }
         });
@@ -72,7 +72,7 @@ export function useBuscaGlobal() {
                     titulo: p.titulo,
                     descricao: p.descricao || nomeCat,
                     categoria: 'Processos',
-                    url: `/dashboard/processes?id=${p.id}`,
+                    url: `/empresa/processos?id=${p.id}`,
                 });
             }
         });
@@ -89,7 +89,7 @@ export function useBuscaGlobal() {
                         titulo: u.nome,
                         descricao: u.email,
                         categoria: 'Usuários',
-                        url: `/dashboard/users?id=${u.id}`,
+                        url: `/empresa/usuarios?id=${u.id}`,
                     });
                 }
             });
