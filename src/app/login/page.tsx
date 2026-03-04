@@ -14,7 +14,7 @@ import { calcularRotaInicial } from "@/lib/redirecionamento";
 
 export default function LoginPage() {
     const router = useRouter();
-    const { signInWithEmailAndPassword } = useAuth();
+    const { entrarComEmailSenha, logout } = useAuth();
 
     const [credenciais, setCredenciais] = useState({ email: "", senha: "" });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,28 +28,54 @@ export default function LoginPage() {
         }
 
         setIsSubmitting(true);
-        try {
-            const result = await signInWithEmailAndPassword(credenciais.email, credenciais.senha);
-            const uid = result.user.uid;
 
+        const result = await entrarComEmailSenha(credenciais.email, credenciais.senha);
+
+        if (!result.ok) {
+            toast({ title: "Falha de Login", description: result.message, variant: "destructive" });
+            setIsSubmitting(false);
+            return;
+        }
+
+        const uid = result.uid;
+
+        try {
             // Force block any fake-redirects. Fetch user RBAC strictly.
             const perfil = await repositorioUsuarios.obterPerfilPorUid(uid);
 
-            if (perfil) {
-                const url = calcularRotaInicial(perfil);
-                router.replace(url);
-            } else {
-                router.replace("/perfil-nao-provisionado");
+            if (!perfil) {
+                // Remove the partial session leak explicitly
+                await logout();
+                toast({ title: "Acesso Restrito", description: "Seu usuário ainda não tem perfil no sistema. Contate o administrador.", variant: "destructive" });
+                setIsSubmitting(false);
+                return;
             }
 
-        } catch (error: any) {
-            console.error("Erro no login:", error);
-            const message = error.code === "auth/invalid-credential"
-                ? "E-mail ou senha incorretos."
-                : "Erro ao autenticar. Tente novamente.";
+            if (!perfil.ativo) {
+                await logout();
+                toast({ title: "Acesso Negado", description: "Usuário desativado.", variant: "destructive" });
+                setIsSubmitting(false);
+                return;
+            }
 
-            toast({ title: "Falha de Login", description: message, variant: "destructive" });
-            setIsSubmitting(false); // Only free up if failed, keep loading UI if navigating success.
+            // O redirecionamento base do SaaS para a home correta
+            const url = calcularRotaInicial(perfil);
+
+            // Requisito: Se papelPortal !== SISTEMA (apenas como aviso de console para o log da tela master caso o user force. Mas o router vai jogar para a respectiva URL). 
+            // Se o login deve ser puríssimo /sistema, nós podemos validar aqui. O sistema suporta 3 portais no Root.
+            if (perfil.papelPortal !== "SISTEMA") {
+                console.info("LOGIN_SUCCESS: Usuário NÃO é admin de Sistema. Redirecionando para portal específico:", url);
+            } else {
+                console.info("LOGIN_SUCCESS: Admin do Sistema autenticado com sucesso.");
+            }
+
+            router.replace(url);
+
+        } catch (error: any) {
+            console.error("Erro interno ao validar Perfil:", error);
+            await logout();
+            toast({ title: "Erro Inesperado", description: "Falha ao validar permissões de usuário.", variant: "destructive" });
+            setIsSubmitting(false);
         }
     };
 

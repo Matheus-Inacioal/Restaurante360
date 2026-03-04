@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { criarEmpresaComTrial } from '@/server/financeiro/servicos/criar-empresa-com-trial';
+import { adminDb, adminAuth } from '@/lib/firebase/firebase-admin';
 import { normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 
 const tenantSchema = z.object({
@@ -10,7 +10,6 @@ const tenantSchema = z.object({
     email: z.string().trim().toLowerCase().email("Email inválido"),
     whatsappResponsavel: z.string().min(10, "WhatsApp precisa ter no mínimo 10 números"),
     planoId: z.string().min(1, "ID do plano é obrigatório"),
-    status: z.enum(["TRIAL_ATIVO", "ATIVA", "SUSPENSA"]).optional(),
     diasTrial: z.number().int().min(0, "Dias trial devem ser maiores ou iguais a 0").default(7),
     vencimentoPrimeiraCobrancaEm: z.string().optional()
 });
@@ -19,86 +18,140 @@ export async function POST(req: Request) {
     try {
         const body = await req.json();
 
-        // 1. Validar e Sanitizar input básico
+        // 1. Validar payload com Zod
         const parseResult = tenantSchema.safeParse(body);
-
         if (!parseResult.success) {
             return NextResponse.json({
                 ok: false,
                 code: "VALIDATION_ERROR",
-                message: 'Dados inválidos ou incompletos de criação da empresa.',
+                message: 'Dados inválidos ou incompletos.',
                 issues: parseResult.error.flatten().fieldErrors
             }, { status: 400 });
         }
 
         const data = parseResult.data;
-
-        // Limpeza server-side contra invasões com normalizadores
         const cnpjLimpo = normalizarCNPJ(data.cnpj);
         const wappLimpo = normalizarWhatsApp(data.whatsappResponsavel);
-        const emailLimpo = data.email.trim().toLowerCase();
+        const emailLimpo = data.email;
+        const plano = data.planoId;
+        const diasTrial = data.diasTrial;
 
-        console.log("[CRIAR_EMPRESA] payload recebido:", {
-            nome: data.nome, cnpjLimpo, responsavelNome: data.responsavelNome, emailLimpo, wappLimpo
-        });
+        // Validar e Sanitizar vencimentoPrimeiraCobrancaEm
+        const hoje = new Date();
+        const trialFim = new Date(hoje);
+        trialFim.setDate(hoje.getDate() + diasTrial);
 
-        // Setup dinâmico da fatura
-        let vPrimeiraCobranca = data.vencimentoPrimeiraCobrancaEm;
-        if (vPrimeiraCobranca) {
-            if (vPrimeiraCobranca.length === 10) {
-                vPrimeiraCobranca = new Date(vPrimeiraCobranca + "T12:00:00.000Z").toISOString();
+        console.log(`[CRIAR_EMPRESA] Iniciando provisionamento para: ${data.nome} (${cnpjLimpo})`);
+
+        // Cria IDs
+        const empresaRef = adminDb.collection("empresas").doc();
+        const empresaId = empresaRef.id;
+        const assinaturaRef = adminDb.collection("financeiro_assinaturas").doc();
+        const aceiteRef = adminDb.collection("financeiro_aceites").doc();
+        const aceiteToken = aceiteRef.id;
+
+        // 2. Criar usuário no Firebase Auth
+        const senhaGerada = Math.random().toString(36).slice(-8) + "A1@";
+        let userRecord;
+        try {
+            userRecord = await adminAuth.createUser({
+                email: emailLimpo,
+                password: senhaGerada,
+                displayName: data.responsavelNome,
+            });
+        } catch (authError: any) {
+            console.error("[CRIAR_EMPRESA] Erro no Auth:", authError);
+            if (authError.code === "auth/email-already-exists") {
+                return NextResponse.json({ ok: false, code: "EMAIL_JA_EXISTE", message: "Este e-mail já está em uso por outro usuário." }, { status: 400 });
             }
-        } else if (data.diasTrial > 0) {
-            const d = new Date();
-            d.setDate(d.getDate() + data.diasTrial);
-            vPrimeiraCobranca = d.toISOString();
+            throw authError; // repassa pro catch geral
         }
 
-        const res = await criarEmpresaComTrial({
-            empresa: { nome: data.nome, cnpj: cnpjLimpo },
-            responsavel: { nome: data.responsavelNome, email: emailLimpo, whatsappResponsavel: wappLimpo },
-            planoId: data.planoId,
-            ciclo: 'MENSAL',
-            diasTrial: data.diasTrial,
-            vencimentoPrimeiraCobrancaEm: vPrimeiraCobranca || ''
+        const uid = userRecord.uid;
+
+        // Batch write para garantir transação atômica
+        const batch = adminDb.batch();
+
+        // 1. Criar empresa no Firestore
+        batch.set(empresaRef, {
+            nome: data.nome,
+            cnpj: cnpjLimpo,
+            responsavelEmail: emailLimpo,
+            whatsappResponsavel: wappLimpo,
+            status: "TRIAL_ATIVO",
+            criadoEm: adminDb.FieldValue.serverTimestamp()
         });
 
-        const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+        // 3. Criar perfil global
+        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
+        batch.set(usuarioGlobalRef, {
+            uid: uid,
+            email: emailLimpo,
+            nome: data.responsavelNome,
+            papelPortal: "EMPRESA",
+            papelEmpresa: "GESTOR",
+            empresaId: empresaId,
+            ativo: true,
+            criadoEm: adminDb.FieldValue.serverTimestamp(),
+            atualizadoEm: adminDb.FieldValue.serverTimestamp()
+        });
 
-        // Disparo otimista para mensagens (apenas log sem trava async do fluxo)
+        // 4. Criar usuário dentro da empresa
+        const usuarioEmpresaRef = empresaRef.collection("usuarios").doc(uid);
+        batch.set(usuarioEmpresaRef, {
+            uid: uid,
+            nome: data.responsavelNome,
+            papel: "GESTOR",
+            ativo: true,
+            criadoEm: adminDb.FieldValue.serverTimestamp()
+        });
+
+        // 5. Criar assinatura
+        batch.set(assinaturaRef, {
+            empresaId: empresaId,
+            plano: plano,
+            status: "TRIAL",
+            diasTrial: diasTrial,
+            criadoEm: adminDb.FieldValue.serverTimestamp()
+        });
+
+        // 6. Criar aceite
+        batch.set(aceiteRef, {
+            empresaId: empresaId,
+            token: aceiteToken,
+            status: "PENDENTE",
+            expiraEm: trialFim,
+            criadoEm: adminDb.FieldValue.serverTimestamp()
+        });
+
+        // Comita tudo
+        await batch.commit();
+
+        console.log(`[CRIAR_EMPRESA] Sucesso. EmpresaId: ${empresaId}, UID: ${uid}`);
+
+        const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+        const aceiteUrl = `${origin}/aceite/${aceiteToken}`;
+
+        // (Opcional) Disparar emails/wapp de onboardings reais depois...
         fetch(`${origin}/api/mensagens/email/aceite`, {
             method: 'POST',
-            body: JSON.stringify({ email: res.novaEmpresa?.responsavelEmail, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
+            body: JSON.stringify({ email: emailLimpo, tokenAceite: aceiteToken, empresaId: empresaId, senhaTemporaria: senhaGerada }),
             headers: { 'Content-Type': 'application/json' }
         }).catch(e => console.error("[CRIAR_EMPRESA] Erro disparando email fallback", e));
 
-        fetch(`${origin}/api/mensagens/whatsapp/aceite`, {
-            method: 'POST',
-            body: JSON.stringify({ telefone: res.novaEmpresa?.whatsappResponsavel, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
-            headers: { 'Content-Type': 'application/json' }
-        }).catch(e => console.error("[CRIAR_EMPRESA] Erro disparando wapp fallback", e));
-
-        const aceiteUrl = `${origin}/aceite/${res.aceiteToken}`;
-
+        // 7. Retornar resposta
         return NextResponse.json({
             ok: true,
-            empresaId: res.empresaId,
-            aceiteToken: res.aceiteToken,
-            aceiteUrl: aceiteUrl,
-            statusEmpresa: res.novaEmpresa?.status
+            empresaId: empresaId,
+            aceiteUrl: aceiteUrl
         }, { status: 201 });
 
     } catch (error: any) {
-        console.error("[CRIAR_EMPRESA] erro", error);
-
-        const message = error?.message || "Erro interno do servidor.";
-        const issues = error?.issues || error?.flatten?.() || undefined;
-
-        if (issues) {
-            return NextResponse.json({ ok: false, code: "VALIDATION_ERROR", message, issues }, { status: 400 });
-        }
-
-        // Erro geral do catch
-        return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message }, { status: 500 });
+        console.error("[CRIAR_EMPRESA] Erro fatal:", error);
+        return NextResponse.json({
+            ok: false,
+            code: "INTERNAL_ERROR",
+            message: error.message || "Erro interno do servidor ao provisionar empresa."
+        }, { status: 500 });
     }
 }
