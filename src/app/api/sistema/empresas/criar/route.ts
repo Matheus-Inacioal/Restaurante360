@@ -3,19 +3,15 @@ import { z } from 'zod';
 import { criarEmpresaComTrial } from '@/server/financeiro/servicos/criar-empresa-com-trial';
 
 const tenantSchema = z.object({
-    empresa: z.object({
-        nome: z.string().min(2, "Nome muito curto"),
-        cnpj: z.string().min(14).max(18),
-    }),
-    responsavel: z.object({
-        nome: z.string().min(2),
-        email: z.string().email(),
-        whatsappResponsavel: z.string().min(10),
-    }),
+    nome: z.string().min(2, "Nome é obrigatório"),
+    cnpj: z.string().regex(/^\d{14}$/, "CNPJ inválido (precisa ter 14 dígitos)"),
+    responsavel: z.string().min(2, "Nome do responsável é obrigatório"),
+    email: z.string().email("Email inválido"),
+    whatsappResponsavel: z.string().regex(/^\d{12,13}$/, "WhatsApp inválido (inclua DDD)"),
     planoId: z.string(),
-    ciclo: z.enum(['MENSAL', 'ANUAL']),
-    diasTrial: z.number().min(0).default(7),
-    vencimentoPrimeiraCobrancaEm: z.string().min(10)
+    status: z.string().optional(),
+    diasTrial: z.number().min(0, "Dias trial devem ser maiores ou iguais a 0").default(7),
+    vencimentoPrimeiraCobrancaEm: z.string().min(10, "Data de vencimento inválida")
 });
 
 export async function POST(request: Request) {
@@ -24,10 +20,21 @@ export async function POST(request: Request) {
         const parseResult = tenantSchema.safeParse(body);
 
         if (!parseResult.success) {
-            return NextResponse.json({ erro: 'Dados inválidos', detalhes: parseResult.error.format() }, { status: 400 });
+            return NextResponse.json({
+                ok: false,
+                message: 'Dados inválidos',
+                issues: parseResult.error.flatten()
+            }, { status: 400 });
         }
 
-        const res = await criarEmpresaComTrial(parseResult.data);
+        const res = await criarEmpresaComTrial({
+            empresa: { nome: parseResult.data.nome, cnpj: parseResult.data.cnpj },
+            responsavel: { nome: parseResult.data.responsavel, email: parseResult.data.email, whatsappResponsavel: parseResult.data.whatsappResponsavel },
+            planoId: parseResult.data.planoId,
+            ciclo: 'MENSAL',
+            diasTrial: parseResult.data.diasTrial,
+            vencimentoPrimeiraCobrancaEm: parseResult.data.vencimentoPrimeiraCobrancaEm
+        });
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
         // Disparo para Endpoints Fake de Mensageria
@@ -44,14 +51,20 @@ export async function POST(request: Request) {
         }).catch(e => console.error("Erro disparando wapp fallback", e));
 
         return NextResponse.json({
+            ok: true,
             sucesso: true,
             empresaId: res.empresaId,
             aceiteToken: res.aceiteToken,
             linkAceite: `${baseUrl}/aceite/${res.aceiteToken}`
-        }, { status: 201 });
+        }, { status: 200 });
 
     } catch (error: any) {
         console.error("Erro na criacao de empresa:", error);
-        return NextResponse.json({ erro: 'Falha interna', detalhe: error.message }, { status: 500 });
+
+        const message = error?.message || "Erro interno";
+        const issues = error?.issues || error?.flatten?.() || undefined;
+
+        // Erro geral do catch
+        return NextResponse.json({ ok: false, message, issues }, { status: 500 });
     }
 }

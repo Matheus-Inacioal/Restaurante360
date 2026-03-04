@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { z } from 'zod';
+import { formatarCNPJ, formatarTelefoneBR, normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
+import { fetchJSON } from '@/lib/http/fetch-json';
 import {
     Building2,
     Users,
@@ -101,43 +104,68 @@ export default function PortalSistemaDashboard() {
     const [novoPlano, setNovoPlano] = useState<'Starter' | 'Pro' | 'Enterprise'>('Starter');
     const [novoStatus, setNovoStatus] = useState<'Ativa' | 'Suspensa'>('Ativa');
 
+    const formRef = useRef<HTMLFormElement>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errosForm, setErrosForm] = useState<Record<string, string>>({});
 
     const handleCriarEmpresa = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!novoNome.trim() || !novoEmail.trim() || !novoResponsavel.trim() || !novoCnpj.trim() || !novoWhatsapp.trim()) {
-            toast({
-                title: "Campos obrigatórios",
-                description: "Preencha o nome, CNPJ, responsável, e-mail e whatsapp para continuar.",
-                variant: "destructive"
-            });
+        const cnpjNormalizado = normalizarCNPJ(novoCnpj);
+        const whatsappNormalizado = normalizarWhatsApp(novoWhatsapp);
+
+        const erros: Record<string, string> = {};
+
+        if (!novoNome.trim())
+            erros.nome = "Nome é obrigatório.";
+
+        if (cnpjNormalizado.length !== 14)
+            erros.cnpj = "CNPJ inválido (precisa ter 14 dígitos).";
+
+        if (!novoResponsavel.trim())
+            erros.responsavel = "Responsável é obrigatório.";
+
+        if (!novoEmail.trim())
+            erros.email = "E-mail é obrigatório.";
+        else if (!/\S+@\S+\.\S+/.test(novoEmail.trim()))
+            erros.email = "E-mail inválido.";
+
+        if (!(whatsappNormalizado.length >= 10 && whatsappNormalizado.length <= 13))
+            erros.whatsappResponsavel = "WhatsApp inválido (deve ter entre 10 e 13 números com DDD).";
+
+        if (Object.keys(erros).length > 0) {
+            setErrosForm(erros);
             return;
         }
 
+        setErrosForm({});
         setIsSubmitting(true);
 
         try {
             const payload = {
-                empresa: { nome: novoNome, cnpj: novoCnpj },
-                responsavel: { nome: novoResponsavel, email: novoEmail, whatsappResponsavel: novoWhatsapp },
+                nome: novoNome.trim(),
+                cnpj: cnpjNormalizado,
+                responsavel: novoResponsavel.trim(),
+                email: novoEmail.trim().toLowerCase(),
+                whatsappResponsavel: whatsappNormalizado,
                 planoId: novoPlano,
-                ciclo: 'MENSAL',
+                status: novoStatus,
                 diasTrial: novoDiasTrial,
                 vencimentoPrimeiraCobrancaEm: novoVencimentoPrimeiraCobranca
             };
 
-            const response = await fetch('/api/sistema/empresas/criar', {
+            type CriarEmpresaResponse = {
+                ok: true;
+                empresaId: string;
+                aceiteToken?: string;
+                linkAceite?: string;
+            };
+
+            const data = await fetchJSON<CriarEmpresaResponse>('/api/sistema/empresas/criar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.erro || 'Erro ao criar empresa na API');
-            }
 
             // Fake append immediately without waiting global state sync to avoid reload
             const dataAtual = new Date();
@@ -146,11 +174,11 @@ export default function PortalSistemaDashboard() {
 
             const novaEmpresa: EmpresaAtualizada = {
                 id: data.empresaId,
-                nome: novoNome,
-                cnpj: novoCnpj,
-                responsavelNome: novoResponsavel,
-                responsavelEmail: novoEmail,
-                whatsappResponsavel: novoWhatsapp,
+                nome: novoNome.trim(),
+                cnpj: cnpjNormalizado,
+                responsavelNome: novoResponsavel.trim(),
+                responsavelEmail: novoEmail.trim().toLowerCase(),
+                whatsappResponsavel: whatsappNormalizado,
                 planoId: novoPlano,
                 planoNome: novoPlano,
                 cicloPagamento: 'MENSAL',
@@ -174,7 +202,8 @@ export default function PortalSistemaDashboard() {
             });
         } catch (error: any) {
             console.error('Falha ao instanciar tenant:', error);
-            toast({ title: 'Erro sistêmico', description: error.message || 'Não foi possível provisionar o locatário no Asaas e banco.', variant: 'destructive' });
+            const msg = error?.message || 'Erro sistêmico ao criar empresa. Verifique os campos e tente novamente.';
+            toast({ title: 'Erro sistêmico', description: msg, variant: 'destructive' });
         } finally {
             setIsSubmitting(false);
         }
@@ -190,6 +219,7 @@ export default function PortalSistemaDashboard() {
         setNovoVencimentoPrimeiraCobranca(getDefaultDate());
         setNovoPlano('Starter');
         setNovoStatus('Ativa');
+        setErrosForm({});
     };
 
     return (
@@ -216,7 +246,7 @@ export default function PortalSistemaDashboard() {
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="sm:max-w-[500px]">
-                            <form onSubmit={handleCriarEmpresa}>
+                            <form ref={formRef} onSubmit={handleCriarEmpresa} noValidate>
                                 <DialogHeader>
                                     <DialogTitle>Criar Nova Empresa</DialogTitle>
                                     <DialogDescription>
@@ -224,72 +254,81 @@ export default function PortalSistemaDashboard() {
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="nome" className="text-right">
+                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <Label htmlFor="nome" className="text-right mt-3">
                                             Nome *
                                         </Label>
-                                        <Input
-                                            id="nome"
-                                            value={novoNome}
-                                            onChange={(e) => setNovoNome(e.target.value)}
-                                            placeholder="Nome fantasia da empresa"
-                                            className="col-span-3"
-                                            required
-                                        />
+                                        <div className="col-span-3">
+                                            <Input
+                                                id="nome"
+                                                value={novoNome}
+                                                onChange={(e) => setNovoNome(e.target.value)}
+                                                placeholder="Nome fantasia da empresa"
+                                            />
+                                            {errosForm.nome && <p className="text-xs text-destructive mt-1">{errosForm.nome}</p>}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="cnpj" className="text-right">
+                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <Label htmlFor="cnpj" className="text-right mt-3">
                                             CNPJ *
                                         </Label>
-                                        <Input
-                                            id="cnpj"
-                                            value={novoCnpj}
-                                            onChange={(e) => setNovoCnpj(e.target.value)}
-                                            placeholder="00.000.000/0000-00"
-                                            className="col-span-3"
-                                            required
-                                        />
+                                        <div className="col-span-3">
+                                            <Input
+                                                id="cnpj"
+                                                value={novoCnpj}
+                                                onChange={(e) => setNovoCnpj(formatarCNPJ(e.target.value))}
+                                                placeholder="00.000.000/0000-00"
+                                                inputMode="numeric"
+                                                autoComplete="off"
+                                            />
+                                            {errosForm.cnpj && <p className="text-xs text-destructive mt-1">{errosForm.cnpj}</p>}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4 mt-2">
-                                        <Label htmlFor="responsavel" className="text-right">
+                                    <div className="grid grid-cols-4 items-start gap-4 mt-2">
+                                        <Label htmlFor="responsavel" className="text-right mt-3">
                                             Resp. *
                                         </Label>
-                                        <Input
-                                            id="responsavel"
-                                            value={novoResponsavel}
-                                            onChange={(e) => setNovoResponsavel(e.target.value)}
-                                            placeholder="Nome do administrador"
-                                            className="col-span-3"
-                                            required
-                                        />
+                                        <div className="col-span-3">
+                                            <Input
+                                                id="responsavel"
+                                                value={novoResponsavel}
+                                                onChange={(e) => setNovoResponsavel(e.target.value)}
+                                                placeholder="Nome do administrador"
+                                            />
+                                            {errosForm.responsavel && <p className="text-xs text-destructive mt-1">{errosForm.responsavel}</p>}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="email" className="text-right">
+                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <Label htmlFor="email" className="text-right mt-3">
                                             E-mail *
                                         </Label>
-                                        <Input
-                                            id="email"
-                                            type="email"
-                                            value={novoEmail}
-                                            onChange={(e) => setNovoEmail(e.target.value)}
-                                            placeholder="email@empresa.com"
-                                            className="col-span-3"
-                                            required
-                                        />
+                                        <div className="col-span-3">
+                                            <Input
+                                                id="email"
+                                                type="email"
+                                                value={novoEmail}
+                                                onChange={(e) => setNovoEmail(e.target.value)}
+                                                placeholder="email@empresa.com"
+                                            />
+                                            {errosForm.email && <p className="text-xs text-destructive mt-1">{errosForm.email}</p>}
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="whatsapp" className="text-right text-xs">
+                                    <div className="grid grid-cols-4 items-start gap-4">
+                                        <Label htmlFor="whatsapp" className="text-right text-xs mt-3">
                                             WhatsApp *
                                         </Label>
-                                        <Input
-                                            id="whatsapp"
-                                            type="tel"
-                                            value={novoWhatsapp}
-                                            onChange={(e) => setNovoWhatsapp(e.target.value)}
-                                            placeholder="119 9999 9999"
-                                            className="col-span-3"
-                                            required
-                                        />
+                                        <div className="col-span-3">
+                                            <Input
+                                                id="whatsapp"
+                                                type="tel"
+                                                value={novoWhatsapp}
+                                                onChange={(e) => setNovoWhatsapp(formatarTelefoneBR(e.target.value))}
+                                                placeholder="+55 (61) 99999-9999"
+                                                inputMode="tel"
+                                                autoComplete="tel"
+                                            />
+                                            {errosForm.whatsappResponsavel && <p className="text-xs text-destructive mt-1">{errosForm.whatsappResponsavel}</p>}
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-4 items-center gap-4 mt-2">
                                         <Label htmlFor="diasTrial" className="text-right text-xs">
