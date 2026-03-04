@@ -7,10 +7,10 @@ import { Header } from '@/components/header';
 import { usePerfil } from '@/hooks/use-perfil';
 
 export default function LayoutSistema({ children }: { children: React.ReactNode }) {
-    const { perfil } = usePerfil();
+    const { perfilUsuario } = usePerfil();
 
-    const mockUser = {
-        name: perfil?.nome || 'Gestor Master',
+    const currentUser = {
+        name: perfilUsuario?.nome || 'Gestor Master',
     };
 
     return (
@@ -18,7 +18,7 @@ export default function LayoutSistema({ children }: { children: React.ReactNode 
             <SidebarProvider>
                 <SidebarSistema />
                 <SidebarInset>
-                    <Header user={mockUser} title="Sistema" configUrl="/sistema/configuracoes" />
+                    <Header user={currentUser} title="Sistema" configUrl="/sistema/configuracoes" />
                     <div className="w-full px-8 py-8">
                         <div className="max-w-[1200px] mx-auto space-y-8">
                             {children}

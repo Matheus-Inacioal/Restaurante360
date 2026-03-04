@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { z } from 'zod';
 import { formatarCNPJ, formatarTelefoneBR, normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 import { fetchJSON } from '@/lib/http/fetch-json';
+import { testarConexaoFirestore } from '@/lib/firebase/teste-conexao';
 import {
     Building2,
     Users,
@@ -142,23 +143,29 @@ export default function PortalSistemaDashboard() {
         setIsSubmitting(true);
 
         try {
+            let dataCobrancaIso = "";
+            if (novoVencimentoPrimeiraCobranca) {
+                dataCobrancaIso = new Date(novoVencimentoPrimeiraCobranca + "T12:00:00.000Z").toISOString();
+            }
+
             const payload = {
                 nome: novoNome.trim(),
                 cnpj: cnpjNormalizado,
-                responsavel: novoResponsavel.trim(),
+                responsavelNome: novoResponsavel.trim(),
                 email: novoEmail.trim().toLowerCase(),
                 whatsappResponsavel: whatsappNormalizado,
                 planoId: novoPlano,
                 status: novoStatus,
                 diasTrial: novoDiasTrial,
-                vencimentoPrimeiraCobrancaEm: novoVencimentoPrimeiraCobranca
+                vencimentoPrimeiraCobrancaEm: dataCobrancaIso
             };
 
             type CriarEmpresaResponse = {
                 ok: true;
                 empresaId: string;
                 aceiteToken?: string;
-                linkAceite?: string;
+                aceiteUrl?: string;
+                statusEmpresa?: string;
             };
 
             const data = await fetchJSON<CriarEmpresaResponse>('/api/sistema/empresas/criar', {
@@ -192,17 +199,28 @@ export default function PortalSistemaDashboard() {
                 atualizadoEm: dataAtual.toISOString()
             };
 
+            if (data.aceiteUrl && (!data.aceiteUrl.startsWith("http"))) {
+                throw new Error("aceiteUrl gerada é inválida");
+            }
+
             setEmpresas([novaEmpresa, ...empresas]);
             setIsModalOpen(false);
             resetForm();
 
             toast({
-                title: "Tenant Criado com Sucesso!",
-                description: `A empresa entrou em modo Trial e o link de ativação foi encaminhado.`,
+                title: "Empresa criada!",
+                description: `Enviamos o link de aceite. (Token: ${data.aceiteToken || '-'})`,
             });
         } catch (error: any) {
-            console.error('Falha ao instanciar tenant:', error);
-            const msg = error?.message || 'Erro sistêmico ao criar empresa. Verifique os campos e tente novamente.';
+            console.error('[CRIAR_EMPRESA] Falha:', error);
+
+            if (error?.details && typeof error.details === 'object') {
+                setErrosForm(error.details);
+                toast({ title: 'Erro de validação', description: error.message || 'Verifique os dados.', variant: 'destructive' });
+                return;
+            }
+
+            const msg = error?.message || 'Erro sistêmico ao criar empresa. Tente novamente.';
             toast({ title: 'Erro sistêmico', description: msg, variant: 'destructive' });
         } finally {
             setIsSubmitting(false);
@@ -618,6 +636,34 @@ export default function PortalSistemaDashboard() {
                         </Button>
                     </CardFooter>
                 </Card>
+                {/* PAINEL DEV - TESTE DE CONEXÃO (Apenas Desenvolvimento) */}
+                {process.env.NODE_ENV === "development" && (
+                    <Card className="md:col-span-7 lg:col-span-3 border-emerald-500/30 bg-emerald-500/5">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-emerald-600">
+                                <Activity className="h-5 w-5" />
+                                Desenvolvimento (DEV)
+                            </CardTitle>
+                            <CardDescription>
+                                Área exclusiva de testes interativos no Firebase Spark.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button
+                                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                                onClick={async () => {
+                                    try {
+                                        await testarConexaoFirestore();
+                                        toast({ title: "Sucesso!", description: "Documento criado em /teste", variant: "default" });
+                                    } catch (err: any) {
+                                        toast({ title: "Falha de conexão", description: err.message, variant: "destructive" });
+                                    }
+                                }}>
+                                Testar Firestore
+                            </Button>
+                        </CardContent>
+                    </Card>
+                )}
             </div>
         </div>
     );

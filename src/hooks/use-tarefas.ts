@@ -5,10 +5,8 @@ import type { Tarefa, StatusTarefa } from "../lib/types/tarefas";
 import { repositorioTarefas } from "../lib/repositories/repositorio-tarefas";
 import { useToast } from "@/hooks/use-toast";
 
-// MOCK: ID fixo de empresa e usuario para simular ambiente logado até o auth estar fundido
-const MOCK_EMPRESA_ID = "empresa_demo_123";
-const MOCK_USUARIO_ID = "user_matheus_99";
-
+import { useTenant } from "@/hooks/use-tenant";
+import { usePerfil } from "@/hooks/use-perfil";
 export function useTarefas() {
     const [tarefas, setTarefas] = useState<Tarefa[]>([]);
 
@@ -18,12 +16,17 @@ export function useTarefas() {
 
     const { toast } = useToast();
 
+    const { empresaId, carregandoTenant } = useTenant();
+    const { perfilUsuario, carregandoPerfil } = usePerfil();
+
     const carregarTarefas = useCallback(async () => {
+        if (carregandoTenant || carregandoPerfil || !empresaId) return;
+
         setIsCarregando(true);
         setErro(null);
         try {
-            // Injetando exigência Multi-Tenant localmente
-            const data = await repositorioTarefas.obterTodas(MOCK_EMPRESA_ID);
+            // Context Local via FB Auth
+            const data = await repositorioTarefas.obterTodas(empresaId);
             setTarefas(data);
         } catch (error) {
             console.error("Falha ao carregar tarefas:", error);
@@ -40,15 +43,16 @@ export function useTarefas() {
 
     useEffect(() => {
         carregarTarefas();
-    }, [carregarTarefas]);
+    }, [empresaId, carregandoTenant, carregandoPerfil, carregarTarefas]);
 
     const adicionarTarefa = async (dadosDaTarefa: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm" | "empresaId" | "criadoPor">) => {
         try {
-            // Injeta parâmetros de governança nativamente por baixo dos panos (User não envia isso)
+            if (!empresaId || !perfilUsuario) throw new Error("Não Autenticado ou Contexto Indefinido");
+
             const nova = await repositorioTarefas.criar({
                 ...dadosDaTarefa,
-                empresaId: MOCK_EMPRESA_ID,
-                criadoPor: MOCK_USUARIO_ID
+                empresaId: empresaId,
+                criadoPor: perfilUsuario.uid
             });
 
             setTarefas((prev) => [...prev, nova]);
@@ -70,7 +74,8 @@ export function useTarefas() {
 
     const atualizarTarefa = async (id: string, atualizacoes: Partial<Tarefa>) => {
         try {
-            const tarefaAtualizada = await repositorioTarefas.atualizar(id, MOCK_EMPRESA_ID, atualizacoes);
+            if (!empresaId) throw new Error("Aceso negado");
+            const tarefaAtualizada = await repositorioTarefas.atualizar(id, empresaId, atualizacoes);
             setTarefas((prev) => prev.map((t) => (t.id === id ? tarefaAtualizada : t)));
             return tarefaAtualizada;
         } catch (error) {
@@ -85,7 +90,8 @@ export function useTarefas() {
 
     const excluirTarefa = async (id: string) => {
         try {
-            await repositorioTarefas.excluir(id, MOCK_EMPRESA_ID);
+            if (!empresaId) throw new Error("Aceso negado");
+            await repositorioTarefas.excluir(id, empresaId);
             setTarefas((prev) => prev.filter((t) => t.id !== id));
             toast({
                 title: "Limpeza Rápida",

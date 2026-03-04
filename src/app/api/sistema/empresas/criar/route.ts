@@ -1,70 +1,104 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { criarEmpresaComTrial } from '@/server/financeiro/servicos/criar-empresa-com-trial';
+import { normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 
 const tenantSchema = z.object({
-    nome: z.string().min(2, "Nome é obrigatório"),
-    cnpj: z.string().regex(/^\d{14}$/, "CNPJ inválido (precisa ter 14 dígitos)"),
-    responsavel: z.string().min(2, "Nome do responsável é obrigatório"),
-    email: z.string().email("Email inválido"),
-    whatsappResponsavel: z.string().regex(/^\d{12,13}$/, "WhatsApp inválido (inclua DDD)"),
-    planoId: z.string(),
-    status: z.string().optional(),
-    diasTrial: z.number().min(0, "Dias trial devem ser maiores ou iguais a 0").default(7),
-    vencimentoPrimeiraCobrancaEm: z.string().min(10, "Data de vencimento inválida")
+    nome: z.string().trim().min(2, "Nome é obrigatório").max(120),
+    cnpj: z.string().min(14, "CNPJ precisa ter no mínimo 14 números"),
+    responsavelNome: z.string().trim().min(2, "Nome do responsável é obrigatório").max(80),
+    email: z.string().trim().toLowerCase().email("Email inválido"),
+    whatsappResponsavel: z.string().min(10, "WhatsApp precisa ter no mínimo 10 números"),
+    planoId: z.string().min(1, "ID do plano é obrigatório"),
+    status: z.enum(["TRIAL_ATIVO", "ATIVA", "SUSPENSA"]).optional(),
+    diasTrial: z.number().int().min(0, "Dias trial devem ser maiores ou iguais a 0").default(7),
+    vencimentoPrimeiraCobrancaEm: z.string().optional()
 });
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
     try {
-        const body = await request.json();
+        const body = await req.json();
+
+        // 1. Validar e Sanitizar input básico
         const parseResult = tenantSchema.safeParse(body);
 
         if (!parseResult.success) {
             return NextResponse.json({
                 ok: false,
-                message: 'Dados inválidos',
-                issues: parseResult.error.flatten()
+                code: "VALIDATION_ERROR",
+                message: 'Dados inválidos ou incompletos de criação da empresa.',
+                issues: parseResult.error.flatten().fieldErrors
             }, { status: 400 });
         }
 
-        const res = await criarEmpresaComTrial({
-            empresa: { nome: parseResult.data.nome, cnpj: parseResult.data.cnpj },
-            responsavel: { nome: parseResult.data.responsavel, email: parseResult.data.email, whatsappResponsavel: parseResult.data.whatsappResponsavel },
-            planoId: parseResult.data.planoId,
-            ciclo: 'MENSAL',
-            diasTrial: parseResult.data.diasTrial,
-            vencimentoPrimeiraCobrancaEm: parseResult.data.vencimentoPrimeiraCobrancaEm
+        const data = parseResult.data;
+
+        // Limpeza server-side contra invasões com normalizadores
+        const cnpjLimpo = normalizarCNPJ(data.cnpj);
+        const wappLimpo = normalizarWhatsApp(data.whatsappResponsavel);
+        const emailLimpo = data.email.trim().toLowerCase();
+
+        console.log("[CRIAR_EMPRESA] payload recebido:", {
+            nome: data.nome, cnpjLimpo, responsavelNome: data.responsavelNome, emailLimpo, wappLimpo
         });
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-        // Disparo para Endpoints Fake de Mensageria
-        fetch(`${baseUrl}/api/mensagens/email/aceite`, {
-            method: 'POST',
-            body: JSON.stringify({ email: res.novaEmpresa.responsavelEmail, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
-            headers: { 'Content-Type': 'application/json' }
-        }).catch(e => console.error("Erro disparando email fallback", e));
+        // Setup dinâmico da fatura
+        let vPrimeiraCobranca = data.vencimentoPrimeiraCobrancaEm;
+        if (vPrimeiraCobranca) {
+            if (vPrimeiraCobranca.length === 10) {
+                vPrimeiraCobranca = new Date(vPrimeiraCobranca + "T12:00:00.000Z").toISOString();
+            }
+        } else if (data.diasTrial > 0) {
+            const d = new Date();
+            d.setDate(d.getDate() + data.diasTrial);
+            vPrimeiraCobranca = d.toISOString();
+        }
 
-        fetch(`${baseUrl}/api/mensagens/whatsapp/aceite`, {
+        const res = await criarEmpresaComTrial({
+            empresa: { nome: data.nome, cnpj: cnpjLimpo },
+            responsavel: { nome: data.responsavelNome, email: emailLimpo, whatsappResponsavel: wappLimpo },
+            planoId: data.planoId,
+            ciclo: 'MENSAL',
+            diasTrial: data.diasTrial,
+            vencimentoPrimeiraCobrancaEm: vPrimeiraCobranca || ''
+        });
+
+        const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+
+        // Disparo otimista para mensagens (apenas log sem trava async do fluxo)
+        fetch(`${origin}/api/mensagens/email/aceite`, {
             method: 'POST',
-            body: JSON.stringify({ telefone: res.novaEmpresa.whatsappResponsavel, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
+            body: JSON.stringify({ email: res.novaEmpresa?.responsavelEmail, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
             headers: { 'Content-Type': 'application/json' }
-        }).catch(e => console.error("Erro disparando wapp fallback", e));
+        }).catch(e => console.error("[CRIAR_EMPRESA] Erro disparando email fallback", e));
+
+        fetch(`${origin}/api/mensagens/whatsapp/aceite`, {
+            method: 'POST',
+            body: JSON.stringify({ telefone: res.novaEmpresa?.whatsappResponsavel, tokenAceite: res.aceiteToken, empresaId: res.empresaId }),
+            headers: { 'Content-Type': 'application/json' }
+        }).catch(e => console.error("[CRIAR_EMPRESA] Erro disparando wapp fallback", e));
+
+        const aceiteUrl = `${origin}/aceite/${res.aceiteToken}`;
 
         return NextResponse.json({
             ok: true,
-            sucesso: true,
             empresaId: res.empresaId,
             aceiteToken: res.aceiteToken,
-            linkAceite: `${baseUrl}/aceite/${res.aceiteToken}`
-        }, { status: 200 });
+            aceiteUrl: aceiteUrl,
+            statusEmpresa: res.novaEmpresa?.status
+        }, { status: 201 });
 
     } catch (error: any) {
-        console.error("Erro na criacao de empresa:", error);
+        console.error("[CRIAR_EMPRESA] erro", error);
 
-        const message = error?.message || "Erro interno";
+        const message = error?.message || "Erro interno do servidor.";
         const issues = error?.issues || error?.flatten?.() || undefined;
 
+        if (issues) {
+            return NextResponse.json({ ok: false, code: "VALIDATION_ERROR", message, issues }, { status: 400 });
+        }
+
         // Erro geral do catch
-        return NextResponse.json({ ok: false, message, issues }, { status: 500 });
+        return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message }, { status: 500 });
     }
 }

@@ -7,10 +7,8 @@ import { repositorioTarefas } from "../lib/repositories/repositorio-tarefas";
 import { useToast } from "@/hooks/use-toast";
 import type { Tarefa } from "../lib/types/tarefas";
 
-// MOCK: ID fixo de empresa e usuario para simular ambiente logado até o auth estar fundido
-const MOCK_EMPRESA_ID = "empresa_demo_123";
-const MOCK_USUARIO_ID = "user_matheus_99";
-
+import { useTenant } from "@/hooks/use-tenant";
+import { usePerfil } from "@/hooks/use-perfil";
 export function useRotinas() {
     const [rotinas, setRotinas] = useState<Rotina[]>([]);
 
@@ -20,11 +18,16 @@ export function useRotinas() {
 
     const { toast } = useToast();
 
+    const { empresaId, carregandoTenant } = useTenant();
+    const { perfilUsuario, carregandoPerfil } = usePerfil();
+
     const carregarRotinas = useCallback(async () => {
+        if (carregandoTenant || carregandoPerfil || !empresaId) return;
+
         setIsCarregando(true);
         setErro(null);
         try {
-            const data = await repositorioRotinas.obterTodas(MOCK_EMPRESA_ID);
+            const data = await repositorioRotinas.obterTodas(empresaId);
             setRotinas(data);
         } catch (error) {
             console.error("Falha ao carregar rotinas:", error);
@@ -41,14 +44,16 @@ export function useRotinas() {
 
     useEffect(() => {
         carregarRotinas();
-    }, [carregarRotinas]);
+    }, [empresaId, carregandoTenant, carregandoPerfil, carregarRotinas]);
 
     const adicionarRotina = async (dadosDaRotina: Omit<Rotina, "id" | "criadoEm" | "atualizadoEm" | "empresaId" | "criadoPor">) => {
         try {
+            if (!empresaId || !perfilUsuario) throw new Error("Autenticação inválida.");
+
             const nova = await repositorioRotinas.criar({
                 ...dadosDaRotina,
-                empresaId: MOCK_EMPRESA_ID,
-                criadoPor: MOCK_USUARIO_ID
+                empresaId: empresaId,
+                criadoPor: perfilUsuario.uid
             });
 
             setRotinas((prev) => [...prev, nova]);
@@ -70,7 +75,8 @@ export function useRotinas() {
 
     const atualizarRotina = async (id: string, atualizacoes: Partial<Rotina>) => {
         try {
-            const rotinaAtualizada = await repositorioRotinas.atualizar(id, MOCK_EMPRESA_ID, atualizacoes);
+            if (!empresaId) throw new Error("Autenticação inválida.");
+            const rotinaAtualizada = await repositorioRotinas.atualizar(id, empresaId, atualizacoes);
             setRotinas((prev) => prev.map((r) => (r.id === id ? rotinaAtualizada : r)));
             return rotinaAtualizada;
         } catch (error) {
@@ -85,7 +91,8 @@ export function useRotinas() {
 
     const excluirRotina = async (id: string) => {
         try {
-            await repositorioRotinas.excluir(id, MOCK_EMPRESA_ID);
+            if (!empresaId) throw new Error("Autenticação inválida.");
+            await repositorioRotinas.excluir(id, empresaId);
             setRotinas((prev) => prev.filter((r) => r.id !== id));
             toast({
                 title: "Rotina Apagada",
@@ -107,7 +114,9 @@ export function useRotinas() {
             const hoje = new Date();
             const dataReferencia = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
 
-            const ativas = await repositorioRotinas.obterAtivas(MOCK_EMPRESA_ID);
+            if (!empresaId || !perfilUsuario) return 0;
+
+            const ativas = await repositorioRotinas.obterAtivas(empresaId);
             let geradas = 0;
 
             for (const rotina of ativas) {
@@ -124,7 +133,7 @@ export function useRotinas() {
                     }
                 }
 
-                const jaGerou = await repositorioRotinas.verificarGeracaoExistente(rotina.id, dataReferencia, MOCK_EMPRESA_ID);
+                const jaGerou = await repositorioRotinas.verificarGeracaoExistente(rotina.id, dataReferencia, empresaId);
                 if (jaGerou) continue;
 
                 // Definir prazo se houver horário preferencial
@@ -138,7 +147,7 @@ export function useRotinas() {
 
                 // Criar a Tarefa a partir da Rotina
                 const novaTarefa: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
-                    empresaId: MOCK_EMPRESA_ID,
+                    empresaId: empresaId,
                     titulo: rotina.titulo,
                     descricao: rotina.descricao,
                     tipo: rotina.tipoTarefaGerada,
@@ -155,14 +164,15 @@ export function useRotinas() {
                         rotinaId: rotina.id,
                         dataReferencia
                     },
-                    criadoPor: MOCK_USUARIO_ID
+                    criadoPor: perfilUsuario.uid // Perfil usuario nao ser nulo ja validado na primeira clause
+
                 };
 
                 const tarefaCriada = await repositorioTarefas.criar(novaTarefa);
 
                 // Registrar o histórico de geração
                 await repositorioRotinas.registrarGeracao({
-                    empresaId: MOCK_EMPRESA_ID,
+                    empresaId: empresaId,
                     rotinaId: rotina.id,
                     dataReferencia,
                     taskIdGerada: tarefaCriada.id
@@ -192,7 +202,8 @@ export function useRotinas() {
 
     const obterHistoricoGeracoes = useCallback(async (rotinaId: string) => {
         try {
-            return await repositorioRotinas.obterHistoricoRecente(rotinaId, MOCK_EMPRESA_ID);
+            if (!empresaId) return [];
+            return await repositorioRotinas.obterHistoricoRecente(rotinaId, empresaId);
         } catch (error) {
             console.error("Falha ao carregar histórico:", error);
             return [];

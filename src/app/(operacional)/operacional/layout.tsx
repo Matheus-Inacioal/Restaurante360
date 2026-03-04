@@ -7,10 +7,10 @@ import { Header } from '@/components/header';
 import { usePerfil } from '@/hooks/use-perfil';
 
 export default function LayoutOperacional({ children }: { children: React.ReactNode }) {
-    const { perfil } = usePerfil();
+    const { perfilUsuario } = usePerfil();
 
-    const mockUser = {
-        name: perfil?.nome || 'Carregando...',
+    const currentUser = {
+        name: perfilUsuario?.nome || 'Carregando...',
     };
 
     return (
@@ -18,7 +18,7 @@ export default function LayoutOperacional({ children }: { children: React.ReactN
             <SidebarProvider>
                 <SidebarOperacional />
                 <SidebarInset>
-                    <Header user={mockUser} title="Área Operacional" configUrl="/operacional/configuracoes" />
+                    <Header user={currentUser} title="Área Operacional" configUrl="/operacional/configuracoes" />
                     <div className="w-full px-8 py-8">
                         <div className="max-w-[1200px] mx-auto space-y-8">
                             {children}

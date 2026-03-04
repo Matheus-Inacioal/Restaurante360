@@ -1,28 +1,44 @@
-'use client';
-
-import { useFirebase } from '@/firebase/provider';
-import {
-    signInWithEmailAndPassword,
-    signOut as firebaseSignOut
-} from 'firebase/auth';
+import { useState, useEffect } from "react";
+import { onAuthStateChanged, User, signOut, signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
 
 export function useAuth() {
-    const { auth, user: usuarioFirebase, isUserLoading } = useFirebase();
+    const [usuarioAuth, setUsuarioAuth] = useState<User | null>(null);
+    const [carregandoAuth, setCarregandoAuth] = useState(true);
+    const [erroAuth, setErroAuth] = useState<Error | null>(null);
 
-    const login = async (email: string, senha: string) => {
-        if (!auth) throw new Error("Serviço de autenticação indisponível");
-        return signInWithEmailAndPassword(auth, email, senha);
-    };
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(
+            auth,
+            (user) => {
+                setUsuarioAuth(user);
+                setCarregandoAuth(false);
+                setErroAuth(null);
+            },
+            (error) => {
+                setErroAuth(error);
+                setCarregandoAuth(false);
+            }
+        );
+
+        return () => unsubscribe();
+    }, []);
 
     const logout = async () => {
-        if (!auth) throw new Error("Serviço de autenticação indisponível");
-        return firebaseSignOut(auth);
+        try {
+            await signOut(auth);
+        } catch (error: any) {
+            console.error("Erro ao deslogar:", error);
+            setErroAuth(error);
+            throw error;
+        }
     };
 
     return {
-        usuarioFirebase,
-        isCarregandoAuth: isUserLoading,
-        login,
-        logout
+        usuarioAuth,
+        carregandoAuth,
+        erroAuth,
+        logout,
+        signInWithEmailAndPassword: (e: string, p: string) => signInWithEmailAndPassword(auth, e, p)
     };
 }

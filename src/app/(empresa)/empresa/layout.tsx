@@ -7,10 +7,10 @@ import { Header } from '@/components/header';
 import { usePerfil } from '@/hooks/use-perfil';
 
 export default function LayoutEmpresa({ children }: { children: React.ReactNode }) {
-    const { perfil } = usePerfil();
+    const { perfilUsuario } = usePerfil();
 
-    const mockUser = {
-        name: perfil?.nome || 'Carregando...',
+    const currentUser = {
+        name: perfilUsuario?.nome || 'Carregando...',
     };
 
     return (
@@ -18,7 +18,7 @@ export default function LayoutEmpresa({ children }: { children: React.ReactNode 
             <SidebarProvider>
                 <SidebarEmpresa />
                 <SidebarInset>
-                    <Header user={mockUser} title="Painel da Empresa" configUrl="/empresa/configuracoes" />
+                    <Header user={currentUser} title="Painel da Empresa" configUrl="/empresa/configuracoes" />
                     <div className="w-full px-8 py-8">
                         <div className="max-w-[1200px] mx-auto space-y-8">
                             {children}

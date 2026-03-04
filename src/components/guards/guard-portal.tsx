@@ -1,43 +1,52 @@
-'use client';
+"use client";
 
-import { ReactNode, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { usePerfil } from '@/hooks/use-perfil';
-import { podeAcessarSistema, podeAcessarEmpresa, podeAcessarOperacional } from '@/lib/autenticacao/permissoes';
-import { Loader2 } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { usePerfil } from "@/hooks/use-perfil";
+import { podeAcessarPortal } from "@/lib/permissoes";
+import { PapelPortal } from "@/lib/types/identidade";
 
 interface GuardPortalProps {
-    portal: 'sistema' | 'empresa' | 'operacional';
-    children: ReactNode;
+    portal: "sistema" | "empresa" | "operacional";
+    children: React.ReactNode;
 }
 
 export function GuardPortal({ portal, children }: GuardPortalProps) {
     const router = useRouter();
-    const { perfil, isCarregandoPerfil } = usePerfil();
+    const { usuarioAuth, carregandoAuth } = useAuth();
+    const { perfilUsuario, carregandoPerfil, erroPerfil } = usePerfil();
     const [autorizado, setAutorizado] = useState(false);
 
     useEffect(() => {
-        if (isCarregandoPerfil) return;
+        if (carregandoAuth || carregandoPerfil) return;
 
-        if (!perfil) {
-            router.replace('/login');
+        if (!usuarioAuth) {
+            router.replace("/login");
+            return;
+        }
+
+        if (erroPerfil?.message === "PERFIL_NAO_PROVISIONADO") {
+            router.replace("/perfil-nao-provisionado");
             return;
         }
 
         let temAcesso = false;
-        if (portal === 'sistema') temAcesso = podeAcessarSistema(perfil);
-        else if (portal === 'empresa') temAcesso = podeAcessarEmpresa(perfil);
-        else if (portal === 'operacional') temAcesso = podeAcessarOperacional(perfil);
+        if (perfilUsuario) {
+            const portalMapped = portal.toUpperCase() as PapelPortal;
+            temAcesso = podeAcessarPortal(perfilUsuario, portalMapped);
+        }
 
         if (!temAcesso) {
-            router.replace('/acesso-negado');
+            router.replace("/acesso-negado");
             return;
         }
 
         setAutorizado(true);
-    }, [perfil, isCarregandoPerfil, portal, router]);
+    }, [usuarioAuth, perfilUsuario, carregandoAuth, carregandoPerfil, erroPerfil, portal, router]);
 
-    if (isCarregandoPerfil || !autorizado) {
+    if (carregandoAuth || carregandoPerfil || !autorizado) {
         return (
             <div className="flex h-screen w-full items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
