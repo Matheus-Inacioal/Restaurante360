@@ -166,6 +166,8 @@ export default function PortalSistemaDashboard() {
                 aceiteToken?: string;
                 aceiteUrl?: string;
                 statusEmpresa?: string;
+                emailCriado?: string;
+                senhaGerada?: string;
             };
 
             const data = await fetchJSON<CriarEmpresaResponse>('/api/sistema/empresas/criar', {
@@ -208,9 +210,15 @@ export default function PortalSistemaDashboard() {
             resetForm();
 
             toast({
-                title: "Empresa criada!",
-                description: `Enviamos o link de aceite. (Token: ${data.aceiteToken || '-'})`,
+                title: "Empresa e Gestor Criados!",
+                description: `Email: ${data.emailCriado}\nSenha: ${data.senhaGerada}`
             });
+            console.log("------------------------");
+            console.log(`EMPRESA: ${novaEmpresa.nome} CRIADA!`);
+            console.log(`EMAIL DE ACESSO: ${data.emailCriado}`);
+            console.log(`SENHA GERADA: ${data.senhaGerada}`);
+            console.log(`LINK DE ACEITE: ${data.aceiteUrl}`);
+            console.log("------------------------");
         } catch (error: any) {
             console.error('[CRIAR_EMPRESA] Falha:', error);
 

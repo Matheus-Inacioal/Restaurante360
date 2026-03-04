@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { adminDb, adminAuth } from '@/lib/firebase/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+import { adminDb, adminAuth } from '@/server/firebase/admin';
 import { normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 
 const tenantSchema = z.object({
@@ -35,6 +36,14 @@ export async function POST(req: Request) {
         const emailLimpo = data.email;
         const plano = data.planoId;
         const diasTrial = data.diasTrial;
+
+        if (typeof adminDb.collection !== 'function') {
+            return NextResponse.json({
+                ok: false,
+                code: "FIREBASE_ADMIN_ERROR",
+                message: "Painel Administrativo do backend desconectado. Configure o FIREBASE_ADMIN_PRIVATE_KEY no arquivo .env.local para permitir a criação de empresas."
+            }, { status: 500 });
+        }
 
         // Validar e Sanitizar vencimentoPrimeiraCobrancaEm
         const hoje = new Date();
@@ -79,7 +88,7 @@ export async function POST(req: Request) {
             responsavelEmail: emailLimpo,
             whatsappResponsavel: wappLimpo,
             status: "TRIAL_ATIVO",
-            criadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp()
         });
 
         // 3. Criar perfil global
@@ -92,8 +101,8 @@ export async function POST(req: Request) {
             papelEmpresa: "GESTOR",
             empresaId: empresaId,
             ativo: true,
-            criadoEm: adminDb.FieldValue.serverTimestamp(),
-            atualizadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp(),
+            atualizadoEm: FieldValue.serverTimestamp()
         });
 
         // 4. Criar usuário dentro da empresa
@@ -103,7 +112,7 @@ export async function POST(req: Request) {
             nome: data.responsavelNome,
             papel: "GESTOR",
             ativo: true,
-            criadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp()
         });
 
         // 5. Criar assinatura
@@ -112,7 +121,7 @@ export async function POST(req: Request) {
             plano: plano,
             status: "TRIAL",
             diasTrial: diasTrial,
-            criadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp()
         });
 
         // 6. Criar aceite
@@ -121,7 +130,7 @@ export async function POST(req: Request) {
             token: aceiteToken,
             status: "PENDENTE",
             expiraEm: trialFim,
-            criadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp()
         });
 
         // Comita tudo
@@ -143,15 +152,27 @@ export async function POST(req: Request) {
         return NextResponse.json({
             ok: true,
             empresaId: empresaId,
-            aceiteUrl: aceiteUrl
+            aceiteUrl: aceiteUrl,
+            emailCriado: emailLimpo,
+            senhaGerada: senhaGerada
         }, { status: 201 });
 
     } catch (error: any) {
         console.error("[CRIAR_EMPRESA] Erro fatal:", error);
+
+        const errMsg = error?.message || "";
+        if (errMsg.includes("default credentials") || errMsg.includes("Could not load the default credentials")) {
+            return NextResponse.json({
+                ok: false,
+                code: "FIREBASE_ADMIN_CREDENTIALS",
+                message: "Firebase Admin não configurado no ambiente. Verifique FIREBASE_* no .env.local."
+            }, { status: 500 });
+        }
+
         return NextResponse.json({
             ok: false,
             code: "INTERNAL_ERROR",
-            message: error.message || "Erro interno do servidor ao provisionar empresa."
+            message: errMsg || "Erro interno do servidor ao provisionar empresa."
         }, { status: 500 });
     }
 }

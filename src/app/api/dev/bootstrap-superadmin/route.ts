@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { adminDb, adminAuth } from '@/lib/firebase/firebase-admin';
+import { adminDb, adminAuth } from '@/server/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 const superAdminSchema = z.object({
     nome: z.string().trim().min(2, "Nome é obrigatório"),
@@ -70,8 +71,8 @@ export async function POST(req: Request) {
             nome: data.nome,
             papelPortal: "SISTEMA", // <--- Garantindo ROOT permission
             ativo: true,
-            criadoEm: adminDb.FieldValue.serverTimestamp(),
-            atualizadoEm: adminDb.FieldValue.serverTimestamp()
+            criadoEm: FieldValue.serverTimestamp(),
+            atualizadoEm: FieldValue.serverTimestamp()
         }, { merge: true });
 
         console.log(`[BOOTSTRAP_SUPERADMIN] Sucesso.`);

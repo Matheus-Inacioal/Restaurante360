@@ -1,5 +1,5 @@
 import "server-only";
-import { adminDb } from '@/lib/firebase/firebase-admin';
+import { adminDb } from '@/server/firebase/admin';
 import { COLECOES } from '@/lib/firebase/colecoes';
 import { EmpresaAtualizada } from '@/lib/types/financeiro';
 
