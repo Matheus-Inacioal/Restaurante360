@@ -93,59 +93,23 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
 
 
   async function onSubmit(values: ProcessFormValues) {
-    if (!firestore || !user) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro de autenticação',
-        description: 'Não foi possível salvar a rotina.',
-      });
-      return;
-    }
-
     try {
-      const batch = writeBatch(firestore);
-      const activityTemplateCollection = collection(firestore, `users/${user.uid}/activityTemplates`);
+      const res = await fetch('/api/empresa/processos/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values)
+      });
+      const data = await res.json();
 
-      const activityIds: string[] = [];
-      const createdActivities: ActivityTemplate[] = [];
-
-      // Create activity templates for each task
-      for (const task of values.tasks) {
-        const activityRef = doc(activityTemplateCollection);
-        const newActivity: Omit<ActivityTemplate, 'id' | 'createdAt' | 'updatedAt'> = {
-          title: task.title,
-          description: task.description || '',
-          category: 'Outro',
-          frequency: 'on-demand',
-          isRecurring: true,
-          requiresPhoto: task.requiresPhoto,
-          status: 'active',
-          createdBy: user.uid,
-        };
-        batch.set(activityRef, {
-          ...newActivity,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        activityIds.push(activityRef.id);
-        createdActivities.push({ ...newActivity, id: activityRef.id, createdAt: '', updatedAt: '' });
+      if (!res.ok) {
+        if (data.issues) {
+          Object.entries(data.issues).forEach(([field, messages]) => {
+            form.setError(field as any, { message: (messages as string[])[0] });
+          });
+          throw new Error("Verifique os campos em vermelho.");
+        }
+        throw new Error(data.message || 'Erro ao criar rotina.');
       }
-
-      const processCollection = collection(firestore, 'processes');
-      const processRef = doc(processCollection);
-      const newProcessData = {
-        name: values.name,
-        categoryId: values.categoryId,
-        description: values.description,
-        activityIds,
-        isActive: true,
-        createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-      batch.set(processRef, newProcessData);
-
-      await batch.commit();
 
       toast({
         title: 'Rotina criada com sucesso!',
@@ -153,72 +117,70 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
       });
 
       const finalProcess: Process = {
-        id: processRef.id,
-        name: values.name,
-        categoryId: values.categoryId,
-        description: values.description,
-        activityIds,
+        id: data.data.processId,
+        name: data.data.name,
+        categoryId: data.data.categoryId,
+        description: data.data.description,
+        activityIds: data.data.activityIds,
         isActive: true,
-        createdBy: user.uid,
+        createdBy: user?.uid || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      sessionStorage.setItem('createdActivities', JSON.stringify(createdActivities));
+      sessionStorage.setItem('createdActivities', JSON.stringify(data.data.createdActivities));
       setCreatedProcess(finalProcess);
-      setIsAssignDialogOpen(true); // Open the assignment dialog
+      setIsAssignDialogOpen(true);
       form.reset();
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving process: ', error);
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar',
-        description: 'Ocorreu um problema ao salvar a rotina.',
+        description: error.message || 'Ocorreu um problema ao salvar a rotina.',
       });
     }
   }
 
   const handleAssignChecklist = async () => {
-    if (!firestore || !user || !createdProcess || !assignedTo || !date) {
+    if (!createdProcess || !assignedTo || !date) {
       toast({ title: "Erro", description: "Por favor, preencha todos os campos para atribuir o checklist.", variant: "destructive" });
       return;
     }
 
     const createdActivitiesStr = sessionStorage.getItem('createdActivities');
-    const activitiesToUse: ActivityTemplate[] = createdActivitiesStr ? JSON.parse(createdActivitiesStr) : [];
+    const activitiesToUse: any[] = createdActivitiesStr ? JSON.parse(createdActivitiesStr) : [];
 
     if (activitiesToUse.length === 0) {
       toast({ title: "Erro", description: "Não foi possível encontrar as tarefas da rotina.", variant: "destructive" });
       return;
     }
 
-    const tasks = activitiesToUse.map(activity => ({
-      id: doc(collection(firestore, '_')).id,
-      activityTemplateId: activity.id,
-      title: activity.title,
-      description: activity.description,
-      requiresPhoto: activity.requiresPhoto,
-      status: 'pending' as const,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-
-    const checklistData = {
-      date: format(date, 'yyyy-MM-dd'),
-      shift,
-      assignedTo,
-      processName: createdProcess.name,
+    const payload = {
       processId: createdProcess.id,
-      status: 'open' as const,
-      tasks: tasks,
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      processName: createdProcess.name,
+      assignedTo,
+      shift,
+      dateStr: format(date, 'yyyy-MM-dd'),
+      tasks: activitiesToUse.map(activity => ({
+        activityTemplateId: activity.id,
+        title: activity.title,
+        description: activity.description,
+        requiresPhoto: activity.requiresPhoto
+      }))
     };
 
     try {
-      await addDocumentNonBlocking(collection(firestore, 'checklists'), checklistData);
+      const res = await fetch('/api/empresa/checklists/atribuir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Erro ao atribuir rotina.');
+
       toast({
         title: "Checklist Atribuído!",
         description: `A rotina "${createdProcess.name}" foi atribuída com sucesso.`
@@ -227,9 +189,9 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
       setCreatedProcess(null);
       sessionStorage.removeItem('createdActivities');
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error assigning checklist: ", error);
-      toast({ title: "Erro ao Atribuir", description: "Não foi possível criar o checklist.", variant: "destructive" });
+      toast({ title: "Erro ao Atribuir", description: error.message || "Não foi possível criar o checklist.", variant: "destructive" });
     }
   };
 

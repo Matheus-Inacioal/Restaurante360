@@ -1,12 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Building2 } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { ModalCriarEmpresa } from '@/components/sistema/modal-criar-empresa';
 
 export default function EmpresasPage() {
-    const { toast } = useToast();
+    const [isCriarOpen, setIsCriarOpen] = useState(false);
 
     return (
         <div className="flex flex-col gap-6">
@@ -17,7 +18,7 @@ export default function EmpresasPage() {
                         Crie e gerencie empresas (tenants) do sistema.
                     </p>
                 </div>
-                <Button onClick={() => toast({ title: "Em breve", description: "Integraremos ao Firebase na fase 1." })}>
+                <Button onClick={() => setIsCriarOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Nova empresa
                 </Button>
@@ -37,6 +38,12 @@ export default function EmpresasPage() {
                     Integraremos a exibição das empresas na fase 1.
                 </CardContent>
             </Card>
+
+            <ModalCriarEmpresa
+                open={isCriarOpen}
+                onOpenChange={setIsCriarOpen}
+            />
         </div>
     );
 }
+

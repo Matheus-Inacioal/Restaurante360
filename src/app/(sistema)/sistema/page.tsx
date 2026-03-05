@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { formatarCNPJ, formatarTelefoneBR, normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 import { fetchJSON } from '@/lib/http/fetch-json';
 import { testarConexaoFirestore } from '@/lib/firebase/teste-conexao';
+import { ModalEmpresaDetalhes } from '@/app/(sistema)/sistema/components/empresas/ModalEmpresaDetalhes';
 import {
     Building2,
     Users,
@@ -66,23 +67,24 @@ export default function PortalSistemaDashboard() {
     const { toast } = useToast();
     const { firestore } = useFirebase();
 
-    // Lista de empresas com estado para suportar o mock de criação
     const [empresas, setEmpresas] = useState<EmpresaAtualizada[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
+    const carregaLista = async () => {
+        if (!firestore) return;
+        setIsLoading(true);
+        try {
+            const results = await repositorioEmpresasFirestore.listarTodas(firestore);
+            // sort latest first
+            setEmpresas(results.sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime()));
+        } catch (err) {
+            console.error("Erro ao listar", err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const carregaLista = async () => {
-            if (!firestore) return;
-            try {
-                const results = await repositorioEmpresasFirestore.listarTodas(firestore);
-                // sort latest first
-                setEmpresas(results.sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime()));
-            } catch (err) {
-                console.error("Erro ao listar", err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
         carregaLista();
     }, [firestore]);
 
@@ -108,6 +110,9 @@ export default function PortalSistemaDashboard() {
     const formRef = useRef<HTMLFormElement>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errosForm, setErrosForm] = useState<Record<string, string>>({});
+
+    const [modalDetalhesOpen, setModalDetalhesOpen] = useState(false);
+    const [empresaSelecionadaId, setEmpresaSelecionadaId] = useState<string | null>(null);
 
     const handleCriarEmpresa = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -574,10 +579,15 @@ export default function PortalSistemaDashboard() {
                                                     {new Date(emp.criadoEm).toLocaleDateString('pt-BR')}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button variant="ghost" size="sm" asChild>
-                                                        <Link href={`/sistema/empresas?filtro=${emp.id}`}>
-                                                            Ver
-                                                        </Link>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setEmpresaSelecionadaId(emp.id);
+                                                            setModalDetalhesOpen(true);
+                                                        }}
+                                                    >
+                                                        Ver
                                                     </Button>
                                                 </TableCell>
                                             </TableRow>
@@ -644,6 +654,14 @@ export default function PortalSistemaDashboard() {
                         </Button>
                     </CardFooter>
                 </Card>
+
+                <ModalEmpresaDetalhes
+                    open={modalDetalhesOpen}
+                    onOpenChange={setModalDetalhesOpen}
+                    empresaId={empresaSelecionadaId}
+                    onUpdated={() => carregaLista()}
+                />
+
                 {/* PAINEL DEV - TESTE DE CONEXÃO (Apenas Desenvolvimento) */}
                 {process.env.NODE_ENV === "development" && (
                     <Card className="md:col-span-7 lg:col-span-3 border-emerald-500/30 bg-emerald-500/5">

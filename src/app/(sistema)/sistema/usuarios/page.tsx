@@ -1,12 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Plus } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { ModalCriarUsuarioSistema } from '@/components/sistema/modal-criar-usuario-sistema';
 
 export default function UsuariosSistemaPage() {
-    const { toast } = useToast();
+    const [isCriarOpen, setIsCriarOpen] = useState(false);
 
     return (
         <div className="flex flex-col gap-6">
@@ -17,7 +18,7 @@ export default function UsuariosSistemaPage() {
                         Usuários com papel global (superadmin / suporte).
                     </p>
                 </div>
-                <Button onClick={() => toast({ title: "Em breve", description: "Listagem de master admin será atrelada na fase 1." })}>
+                <Button onClick={() => setIsCriarOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Adicionar usuário do sistema
                 </Button>
@@ -34,9 +35,15 @@ export default function UsuariosSistemaPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="text-center p-6 text-sm text-muted-foreground pt-0">
-                    Integraremos ao Firebase na fase 1.
+                    Integraremos a exibição na fase 2.
                 </CardContent>
             </Card>
+
+            <ModalCriarUsuarioSistema
+                open={isCriarOpen}
+                onOpenChange={setIsCriarOpen}
+            />
         </div>
     );
 }
+

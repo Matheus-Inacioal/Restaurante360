@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -7,8 +8,62 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 export default function HelpPage() {
+    const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(false);
+    const [formData, setFormData] = useState({ nome: '', email: '', descricao: '' });
+    const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setFormData(prev => ({ ...prev, [e.target.id]: e.target.value }));
+        setErrors(prev => ({ ...prev, [e.target.id]: '' }));
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        setErrors({});
+
+        try {
+            const res = await fetch('/api/operacional/ajuda/enviar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                if (data.issues) {
+                    const validationErrors: any = {};
+                    Object.entries(data.issues).forEach(([field, messages]) => {
+                        validationErrors[field] = (messages as string[])[0];
+                    });
+                    setErrors(validationErrors);
+                    throw new Error("Verifique os campos inválidos.");
+                }
+                throw new Error(data.message || 'Erro ao enviar chamado.');
+            }
+
+            toast({
+                title: "Sucesso!",
+                description: data.data?.mensagem || "Chamado enviado com sucesso.",
+            });
+            setFormData({ nome: '', email: '', descricao: '' });
+        } catch (error: any) {
+            console.error("Erro ao enviar chamado:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Erro',
+                description: error.message || 'Houve um problema ao enviar o chamado.',
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
             <div className="flex items-center justify-between space-y-2">
@@ -172,25 +227,30 @@ export default function HelpPage() {
                                 <CardDescription>Achou um bug visível na interface ou algo parou de funcionar? Avise a nossa engenharia a qualquer momento enviando o caso detalhado.</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+                                <form className="space-y-4" onSubmit={handleSubmit}>
                                     <div className="grid gap-2">
                                         <Label htmlFor="nome">Nome ou Razão do Contrato</Label>
-                                        <Input id="nome" placeholder="John Doe" />
+                                        <Input id="nome" value={formData.nome} onChange={handleInputChange} placeholder="Ex: João da Silva" />
+                                        {errors.nome && <span className="text-sm text-destructive">{errors.nome}</span>}
                                     </div>
                                     <div className="grid gap-2">
                                         <Label htmlFor="email">E-mail de Retorno</Label>
-                                        <Input id="email" type="email" placeholder="m@example.com" />
+                                        <Input id="email" type="email" value={formData.email} onChange={handleInputChange} placeholder="m@example.com" />
+                                        {errors.email && <span className="text-sm text-destructive">{errors.email}</span>}
                                     </div>
                                     <div className="grid gap-2">
-                                        <Label htmlFor="desc">Resumo do Problema (Passo a passo se possível)</Label>
+                                        <Label htmlFor="descricao">Resumo do Problema (Passo a passo se possível)</Label>
                                         <Textarea
-                                            id="desc"
+                                            id="descricao"
+                                            value={formData.descricao}
+                                            onChange={handleInputChange}
                                             placeholder="Ao tentar criar a rotina x com a loja Y selecionada o botão..."
                                             className="min-h-[120px]"
                                         />
+                                        {errors.descricao && <span className="text-sm text-destructive">{errors.descricao}</span>}
                                     </div>
-                                    <Button type="button" className="w-full">
-                                        Garantir Envio do Reporte!
+                                    <Button type="submit" className="w-full" disabled={isLoading}>
+                                        {isLoading ? 'Enviando...' : 'Garantir Envio do Reporte!'}
                                     </Button>
                                 </form>
                             </CardContent>

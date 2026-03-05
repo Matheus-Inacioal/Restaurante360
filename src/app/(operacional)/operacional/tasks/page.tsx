@@ -30,7 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Image from 'next/image';
 
 interface EnrichedTask extends TaskInstance {
-    checklistId: string;
+  checklistId: string;
 }
 
 export default function TasksPage() {
@@ -39,7 +39,7 @@ export default function TasksPage() {
   const { toast } = useToast();
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<EnrichedTask | null>(null);
-  
+
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,35 +50,35 @@ export default function TasksPage() {
     if (!firestore || !user) return null;
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     return query(
-      collection(firestore, 'checklists'), 
+      collection(firestore, 'checklists'),
       where('assignedTo', '==', user.uid),
       where('date', '==', todayStr)
     );
   }, [firestore, user]);
 
   const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
-  
+
   const allTasks: EnrichedTask[] = useMemo(() => {
-      if (!checklists) return [];
-      // Flat map and sort: pending tasks first, then by title
-      return checklists
-        .flatMap(checklist => 
-            (checklist.tasks || []).map(task => ({
-                ...task,
-                checklistId: checklist.id,
-            }))
-        )
-        .sort((a, b) => {
-            if (a.status === 'done' && b.status !== 'done') return 1;
-            if (a.status !== 'done' && b.status === 'done') return -1;
-            return a.title.localeCompare(b.title);
-        });
+    if (!checklists) return [];
+    // Flat map and sort: pending tasks first, then by title
+    return checklists
+      .flatMap(checklist =>
+        (checklist.tasks || []).map(task => ({
+          ...task,
+          checklistId: checklist.id,
+        }))
+      )
+      .sort((a, b) => {
+        if (a.status === 'done' && b.status !== 'done') return 1;
+        if (a.status !== 'done' && b.status === 'done') return -1;
+        return a.title.localeCompare(b.title);
+      });
   }, [checklists]);
-  
+
   // Effect to handle camera stream
   useEffect(() => {
     let stream: MediaStream | null = null;
-    
+
     const getCameraPermission = async () => {
       if (!isPhotoUploadOpen) return;
       try {
@@ -109,52 +109,39 @@ export default function TasksPage() {
 
 
   const handleCompleteTask = async (task: EnrichedTask, photoUrls: string[] = []) => {
-    if (!firestore || !user || !checklists) return;
-
-    const checklist = checklists.find(c => c.id === task.checklistId);
-    if (!checklist) return;
-    
-    const checklistRef = doc(firestore, 'checklists', task.checklistId);
-
     try {
-        const updatedTasks = (checklist.tasks || []).map(t => {
-            if (t.id === task.id) {
-                return {
-                    ...t,
-                    status: 'done' as const,
-                    completedAt: new Date().toISOString(),
-                    completedBy: user.uid,
-                    photoUrls: photoUrls,
-                };
-            }
-            return t;
-        });
+      const payload = {
+        checklistId: task.checklistId,
+        taskId: task.id,
+        photoUrls: photoUrls
+      };
 
-        const updatePayload: any = { tasks: updatedTasks };
-        
-        const allTasksCompleted = updatedTasks.every(t => t.status === 'done');
-        if (allTasksCompleted) {
-            updatePayload.status = 'completed';
-        } else if(updatedTasks.some(t => t.status === 'done')){
-            updatePayload.status = 'in_progress';
-        }
+      const res = await fetch('/api/operacional/tarefas/concluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-        await updateDoc(checklistRef, updatePayload);
+      const data = await res.json();
 
-        toast({
-            title: "Tarefa concluída!",
-            description: allTasksCompleted ? "Checklist finalizado! Parabéns!" : "Bom trabalho, continue assim!",
-        });
-    } catch (error) {
-        console.error("Error completing task: ", error);
-        toast({
-            variant: "destructive",
-            title: "Erro ao concluir tarefa",
-            description: "Não foi possível salvar a alteração. Tente novamente."
-        });
+      if (!res.ok) {
+        throw new Error(data.message || "Erro ao concluir tarefa.");
+      }
+
+      toast({
+        title: "Tarefa concluída!",
+        description: data.data?.mensagem || "Bom trabalho!",
+      });
+    } catch (error: any) {
+      console.error("Error completing task: ", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao concluir tarefa",
+        description: error.message || "Não foi possível salvar a alteração. Tente novamente."
+      });
     }
   };
-  
+
   const handleOpenPhotoUpload = (task: EnrichedTask) => {
     setSelectedTask(task);
     setAttachedImages([]);
@@ -163,22 +150,22 @@ export default function TasksPage() {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-        const files = Array.from(event.target.files);
-        const dataUrls = files.map(file => URL.createObjectURL(file));
-        setAttachedImages(prev => [...prev, ...dataUrls]);
+      const files = Array.from(event.target.files);
+      const dataUrls = files.map(file => URL.createObjectURL(file));
+      setAttachedImages(prev => [...prev, ...dataUrls]);
     }
   };
 
   const handleCaptureImage = () => {
     if (videoRef.current && canvasRef.current) {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
-        context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-        const dataUrl = canvas.toDataURL('image/png');
-        setAttachedImages(prev => [...prev, dataUrl]);
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      context?.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+      const dataUrl = canvas.toDataURL('image/png');
+      setAttachedImages(prev => [...prev, dataUrl]);
     }
   }
 
@@ -188,10 +175,10 @@ export default function TasksPage() {
 
   const handlePhotoUploadAndComplete = () => {
     if (selectedTask) {
-        // In a real app, you would upload `attachedImages` to Firebase Storage
-        // and get back an array of URLs to pass to handleCompleteTask.
-        // For this mock, we just pass the local blob/data URLs.
-        handleCompleteTask(selectedTask, attachedImages);
+      // In a real app, you would upload `attachedImages` to Firebase Storage
+      // and get back an array of URLs to pass to handleCompleteTask.
+      // For this mock, we just pass the local blob/data URLs.
+      handleCompleteTask(selectedTask, attachedImages);
     }
     setIsPhotoUploadOpen(false);
     setSelectedTask(null);
@@ -220,9 +207,9 @@ export default function TasksPage() {
             </TableHeader>
             <TableBody>
               {isLoading && (
-                  <TableRow>
-                      <TableCell colSpan={4} className="text-center">Carregando tarefas...</TableCell>
-                  </TableRow>
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center">Carregando tarefas...</TableCell>
+                </TableRow>
               )}
               {!isLoading && allTasks.length === 0 && (
                 <TableRow>
@@ -248,14 +235,14 @@ export default function TasksPage() {
                       </div>
                     ) : (
                       task.requiresPhoto ? (
-                          <Button variant="outline" size="sm" onClick={() => handleOpenPhotoUpload(task)}>
-                              <Camera className="mr-2 h-4 w-4" />
-                              Anexar Foto
-                          </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenPhotoUpload(task)}>
+                          <Camera className="mr-2 h-4 w-4" />
+                          Anexar Foto
+                        </Button>
                       ) : (
-                          <Button variant="default" size="sm" onClick={() => handleCompleteTask(task)}>
-                              Concluir
-                          </Button>
+                        <Button variant="default" size="sm" onClick={() => handleCompleteTask(task)}>
+                          Concluir
+                        </Button>
                       )
                     )}
                   </TableCell>
@@ -267,64 +254,63 @@ export default function TasksPage() {
       </Card>
 
       <Dialog open={isPhotoUploadOpen} onOpenChange={setIsPhotoUploadOpen}>
-          <DialogContent className="sm:max-w-xl">
-              <DialogHeader>
-                  <DialogTitle>Anexar Evidência(s)</DialogTitle>
-                  <DialogDescription>
-                      Para a tarefa "{selectedTask?.title}", anexe uma ou mais fotos ou tire uma na hora.
-                  </DialogDescription>
-              </DialogHeader>
-              <Tabs defaultValue="upload">
-                  <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" />Anexar Arquivo</TabsTrigger>
-                      <TabsTrigger value="camera"><Video className="mr-2 h-4 w-4" />Tirar Foto</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="upload" className="py-4">
-                      <div className="grid w-full items-center gap-1.5">
-                          <Label htmlFor="picture">Fotos</Label>
-                          <Input id="picture" type="file" accept="image/*" multiple onChange={handleFileChange} ref={fileInputRef} />
-                          <p className="text-sm text-muted-foreground">Você pode selecionar múltiplos arquivos.</p>
-                      </div>
-                  </TabsContent>
-                  <TabsContent value="camera" className="py-4">
-                      <div className="relative aspect-video bg-muted rounded-md flex items-center justify-center overflow-hidden">
-                          <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
-                          {hasCameraPermission === false && <p className="text-destructive-foreground">Câmera indisponível</p>}
-                          <canvas ref={canvasRef} className="hidden" />
-                      </div>
-                      <Button onClick={handleCaptureImage} disabled={!hasCameraPermission} className="w-full mt-2">
-                          <CameraIcon className="mr-2 h-4 w-4" /> Capturar Foto
-                      </Button>
-                  </TabsContent>
-              </Tabs>
-              
-              {attachedImages.length > 0 && (
-                  <div>
-                      <h4 className="font-medium mb-2">Imagens Anexadas:</h4>
-                      <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                          {attachedImages.map((imgSrc, index) => (
-                              <div key={index} className="relative aspect-square">
-                                  <Image src={imgSrc} alt={`Evidência ${index + 1}`} fill style={{ objectFit: 'cover' }} className="rounded-md" />
-                                  <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 z-10" onClick={() => removeImage(index)}>
-                                      <X className="h-4 w-4" />
-                                  </Button>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              )}
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Anexar Evidência(s)</DialogTitle>
+            <DialogDescription>
+              Para a tarefa "{selectedTask?.title}", anexe uma ou mais fotos ou tire uma na hora.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs defaultValue="upload">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="upload"><Upload className="mr-2 h-4 w-4" />Anexar Arquivo</TabsTrigger>
+              <TabsTrigger value="camera"><Video className="mr-2 h-4 w-4" />Tirar Foto</TabsTrigger>
+            </TabsList>
+            <TabsContent value="upload" className="py-4">
+              <div className="grid w-full items-center gap-1.5">
+                <Label htmlFor="picture">Fotos</Label>
+                <Input id="picture" type="file" accept="image/*" multiple onChange={handleFileChange} ref={fileInputRef} />
+                <p className="text-sm text-muted-foreground">Você pode selecionar múltiplos arquivos.</p>
+              </div>
+            </TabsContent>
+            <TabsContent value="camera" className="py-4">
+              <div className="relative aspect-video bg-muted rounded-md flex items-center justify-center overflow-hidden">
+                <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline />
+                {hasCameraPermission === false && <p className="text-destructive-foreground">Câmera indisponível</p>}
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+              <Button onClick={handleCaptureImage} disabled={!hasCameraPermission} className="w-full mt-2">
+                <CameraIcon className="mr-2 h-4 w-4" /> Capturar Foto
+              </Button>
+            </TabsContent>
+          </Tabs>
 
-              <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsPhotoUploadOpen(false)}>Cancelar</Button>
-                  <Button type="submit" onClick={handlePhotoUploadAndComplete} disabled={attachedImages.length === 0}>
-                      <Paperclip className="mr-2 h-4 w-4" />
-                      Enviar e Concluir
-                  </Button>
-              </DialogFooter>
-          </DialogContent>
+          {attachedImages.length > 0 && (
+            <div>
+              <h4 className="font-medium mb-2">Imagens Anexadas:</h4>
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                {attachedImages.map((imgSrc, index) => (
+                  <div key={index} className="relative aspect-square">
+                    <Image src={imgSrc} alt={`Evidência ${index + 1}`} fill style={{ objectFit: 'cover' }} className="rounded-md" />
+                    <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 z-10" onClick={() => removeImage(index)}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsPhotoUploadOpen(false)}>Cancelar</Button>
+            <Button type="submit" onClick={handlePhotoUploadAndComplete} disabled={attachedImages.length === 0}>
+              <Paperclip className="mr-2 h-4 w-4" />
+              Enviar e Concluir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </main>
   );
 }
 
-    

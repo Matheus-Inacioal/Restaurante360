@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
@@ -35,7 +36,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   category: z.enum(['Higiene', 'Cozinha', 'Atendimento', 'Segurança', 'Outro']),
   frequency: z.enum(['daily', 'weekly', 'monthly', 'on-demand']),
-  assignedRole: z.enum(['manager', 'collaborator', 'gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']).optional(),
+  assignedRole: z.enum(['admin', 'manager', 'collaborator', 'gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']).nullable().optional(),
   requiresPhoto: z.boolean(),
   status: z.enum(['active', 'inactive']),
 });
@@ -54,11 +55,11 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
 
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: activity ? {
-        ...activity,
-        description: activity.description || '',
-        assignedRole: activity.assignedRole,
-    } : {
+    defaultValues: activity ? ({
+      ...activity,
+      description: activity.description || '',
+      assignedRole: activity.assignedRole,
+    } as ActivityFormValues) : {
       title: '',
       description: '',
       category: 'Outro',
@@ -68,57 +69,53 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
     },
   });
 
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
   async function onSubmit(values: ActivityFormValues) {
-    if (!firestore || !user) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro de autenticação',
-        description: 'Não foi possível salvar a atividade.',
-      });
-      return;
-    }
-
+    setGlobalError(null);
     try {
-        const data = {
-            ...values,
-            updatedAt: serverTimestamp(),
-        };
+      const url = '/api/empresa/rotinas/salvar';
+      const method = activity ? 'PUT' : 'POST';
+      const payload = { ...values, ...(activity ? { id: activity.id } : {}) };
 
-        if (activity) {
-            // Update existing activity
-            const activityRef = doc(firestore, `users/${user.uid}/activityTemplates`, activity.id);
-            updateDocumentNonBlocking(activityRef, data);
-            toast({
-                title: 'Modelo de Tarefa Atualizado!',
-                description: 'As alterações foram salvas com sucesso.',
-            });
-        } else {
-            // Create new activity
-            const collectionRef = collection(firestore, `users/${user.uid}/activityTemplates`);
-            addDocumentNonBlocking(collectionRef, {
-                ...data,
-                createdBy: user.uid,
-                createdAt: serverTimestamp(),
-            });
-            toast({
-                title: 'Modelo de Tarefa Criado!',
-                description: 'O novo modelo de tarefa foi salvo com sucesso.',
-            });
-        }
-      onSuccess();
-    } catch (error) {
-      console.error('Error saving activity: ', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao salvar',
-        description: 'Ocorreu um problema ao salvar a tarefa.',
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
+
+      const resData = await res.json();
+
+      if (!res.ok) {
+        if (resData.issues) {
+          Object.entries(resData.issues).forEach(([field, messages]) => {
+            form.setError(field as any, { message: (messages as string[])[0] });
+          });
+          throw new Error("Verifique os campos inválidos.");
+        }
+        throw new Error(resData.message || 'Erro ao salvar a tarefa.');
+      }
+
+      toast({
+        title: activity ? 'Modelo de Tarefa Atualizado!' : 'Modelo de Tarefa Criado!',
+        description: resData.data?.mensagem || 'Salvo com sucesso.',
+      });
+
+      onSuccess();
+    } catch (error: any) {
+      console.error('Error saving activity: ', error);
+      setGlobalError(error.message);
     }
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {globalError && (
+          <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
+            {globalError}
+          </div>
+        )}
         <FormField
           control={form.control}
           name="title"
@@ -154,7 +151,7 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Direcionar para Função (Opcional)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
+              <Select onValueChange={field.onChange} defaultValue={field.value || undefined}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione uma função para direcionar" />
@@ -176,82 +173,82 @@ export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
           )}
         />
         <div className="grid grid-cols-2 gap-4">
-             <FormField
-                control={form.control}
-                name="category"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Categoria</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Selecione a categoria" />
-                        </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                            <SelectItem value="Higiene">Higiene</SelectItem>
-                            <SelectItem value="Cozinha">Cozinha</SelectItem>
-                            <SelectItem value="Atendimento">Atendimento</SelectItem>
-                            <SelectItem value="Segurança">Segurança</SelectItem>
-                            <SelectItem value="Outro">Outro</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )}
-            />
-            <FormField
-                control={form.control}
-                name="frequency"
-                render={({ field }) => (
-                    <FormItem>
-                    <FormLabel>Frequência</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Selecione a frequência" />
-                        </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                            <SelectItem value="daily">Diária</SelectItem>
-                            <SelectItem value="weekly">Semanal</SelectItem>
-                            <SelectItem value="monthly">Mensal</SelectItem>
-                            <SelectItem value="on-demand">Sob Demanda</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    </FormItem>
-                )}
-            />
-        </div>
-        
-        <FormField
+          <FormField
             control={form.control}
-            name="requiresPhoto"
+            name="category"
             render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                    <FormControl>
-                    <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                    />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                    <FormLabel>
-                        Exigir foto como evidência
-                    </FormLabel>
-                    <FormDescription>
-                        O colaborador precisará anexar uma foto para concluir esta tarefa.
-                    </FormDescription>
-                    </div>
-                </FormItem>
+              <FormItem>
+                <FormLabel>Categoria</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a categoria" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="Higiene">Higiene</SelectItem>
+                    <SelectItem value="Cozinha">Cozinha</SelectItem>
+                    <SelectItem value="Atendimento">Atendimento</SelectItem>
+                    <SelectItem value="Segurança">Segurança</SelectItem>
+                    <SelectItem value="Outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
             )}
+          />
+          <FormField
+            control={form.control}
+            name="frequency"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Frequência</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a frequência" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="daily">Diária</SelectItem>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="monthly">Mensal</SelectItem>
+                    <SelectItem value="on-demand">Sob Demanda</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="requiresPhoto"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+              <FormControl>
+                <Checkbox
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+              <div className="space-y-1 leading-none">
+                <FormLabel>
+                  Exigir foto como evidência
+                </FormLabel>
+                <FormDescription>
+                  O colaborador precisará anexar uma foto para concluir esta tarefa.
+                </FormDescription>
+              </div>
+            </FormItem>
+          )}
         />
 
         <div className="flex justify-end pt-4">
-            <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Salvando...' : (activity ? 'Salvar Alterações' : 'Criar Modelo')}
-            </Button>
+          <Button type="submit" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? 'Salvando...' : (activity ? 'Salvar Alterações' : 'Criar Modelo')}
+          </Button>
         </div>
 
       </form>

@@ -11,6 +11,8 @@ import {
     ExternalLink
 } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
+
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -30,12 +32,35 @@ export default function ConfiguracoesPage() {
     const iniciais = nomeUsuario.split(' ').map((n) => n[0]).join('').substring(0, 2);
 
     const [isLoading, setIsLoading] = useState(false);
+    const { toast } = useToast();
 
-    const handleSalvarPerfil = (e: React.FormEvent) => {
+    const handleSalvarPerfil = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsLoading(true);
-        // Simula API real
-        setTimeout(() => setIsLoading(false), 1000);
+
+        const form = new FormData(e.currentTarget);
+        const novoNome = form.get('nome') as string;
+
+        try {
+            // Usa o auth.currentUser.getIdToken() na aplicação real do Firebase
+            // Para efeitos de backend NextJS SSR local, enviamos os dados
+            const res = await fetch('/api/empresa/configuracoes/atualizar', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome: novoNome })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                toast({ title: 'Perfil atualizado', description: data.mensagem });
+            } else {
+                toast({ title: 'Erro', description: data.message, variant: 'destructive' });
+            }
+        } catch (err) {
+            toast({ title: 'Erro', description: 'Ocorreu um problema.', variant: 'destructive' });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -95,7 +120,7 @@ export default function ConfiguracoesPage() {
                             <form onSubmit={handleSalvarPerfil} className="space-y-4">
                                 <div className="grid gap-2">
                                     <Label htmlFor="nome">Nome Completo</Label>
-                                    <Input id="nome" defaultValue={nomeUsuario} />
+                                    <Input id="nome" name="nome" defaultValue={nomeUsuario} required />
                                 </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="email">E-mail Principal</Label>
@@ -117,6 +142,7 @@ export default function ConfiguracoesPage() {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
 
                 {/* ================= ABA: PREFERÊNCIAS ================= */}
                 <TabsContent value="preferencias" className="mt-6 space-y-6">

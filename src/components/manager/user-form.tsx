@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
@@ -21,13 +22,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { createUser } from '@/lib/actions/users';
 
 const formSchema = z.object({
-  name: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
+  nome: z.string().min(3, 'O nome deve ter pelo menos 3 caracteres.'),
   email: z.string().email('Por favor, insira um email válido.'),
-  password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres.'),
-  role: z.enum(['gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']),
+  papel: z.enum(['gestor', 'bar', 'pia', 'cozinha', 'producao', 'garcon']),
 });
 
 type UserFormValues = z.infer<typeof formSchema>;
@@ -38,40 +37,61 @@ interface UserFormProps {
 
 export function UserForm({ onSuccess }: UserFormProps) {
   const { toast } = useToast();
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
   const form = useForm<UserFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: '',
+      nome: '',
       email: '',
-      password: '',
-      role: 'garcon',
+      papel: 'garcon',
     },
   });
 
   async function onSubmit(values: UserFormValues) {
+    setGlobalError(null);
     try {
-      await createUser(values);
-      toast({
-        title: 'Usuário criado com sucesso!',
-        description: `O usuário "${values.name}" foi adicionado à sua equipe.`,
+      const res = await fetch('/api/empresa/usuarios/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values)
       });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.issues) {
+          // Exibir issues do ZD no form (opcional map)
+          Object.entries(data.issues).forEach(([field, messages]) => {
+            form.setError(field as any, { message: (messages as string[])[0] });
+          });
+          throw new Error("Verifique os campos inválidos.");
+        }
+        throw new Error(data.message || 'Ocorreu um erro.');
+      }
+
+      toast({
+        title: 'Usuário adicionado!',
+        description: `O colaborador foi vinculado à sua equipe.`,
+      });
+      form.reset();
       onSuccess();
     } catch (error: any) {
       console.error(error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao criar usuário',
-        description: error.message || 'Ocorreu um erro. Tente novamente.',
-      });
+      setGlobalError(error.message);
     }
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {globalError && (
+          <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
+            {globalError}
+          </div>
+        )}
         <FormField
           control={form.control}
-          name="name"
+          name="nome"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Nome Completo</FormLabel>
@@ -97,20 +117,7 @@ export function UserForm({ onSuccess }: UserFormProps) {
         />
         <FormField
           control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Senha</FormLabel>
-              <FormControl>
-                <Input type="password" placeholder="••••••••" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="role"
+          name="papel"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Função</FormLabel>
