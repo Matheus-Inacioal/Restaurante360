@@ -39,8 +39,8 @@ export const repositorioUsuariosAdmin = {
             papelEmpresa: dados.papelEmpresa,
             empresaId: dados.empresaId,
             ativo: dados.ativo,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp(),
+            criadoEm: new Date(),
+            atualizadoEm: new Date(),
         };
 
         if (batch) {
@@ -69,8 +69,8 @@ export const repositorioUsuariosAdmin = {
             nome: dados.nome,
             papel: dados.papel,
             ativo: dados.ativo,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp(),
+            criadoEm: new Date(),
+            atualizadoEm: new Date(),
         };
 
         if (batch) {

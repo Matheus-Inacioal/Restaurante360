@@ -58,8 +58,8 @@ export async function POST(req: Request) {
             return NextResponse.json({
                 ok: false,
                 code: criacaoResult.code,
-                message: criacaoResult.message,
-                details: isDev && criacaoResult.originalError ? {
+                message: `${criacaoResult.message} - DETALHE: ${criacaoResult.originalError?.message || 'Sem detalhes originais'}`,
+                details: criacaoResult.originalError ? {
                     name: criacaoResult.originalError.name,
                     message: criacaoResult.originalError.message,
                     stack: criacaoResult.originalError.stack,

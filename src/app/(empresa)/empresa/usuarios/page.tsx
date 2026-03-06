@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useUsuarios } from "@/hooks/use-usuarios";
 import type { UsuarioSistema } from "@/lib/types/usuarios";
+import { actionLimparUsuariosTeste } from "@/app/actions-limpeza";
+import { useToast } from "@/hooks/use-toast";
 
 // Sub-componentes
 import { KpisUsuarios } from "@/components/usuarios/kpis-usuarios";
@@ -27,6 +29,8 @@ export default function UsuariosPage() {
         inativar,
         reativar
     } = useUsuarios();
+
+    const { toast } = useToast();
 
     // MOCK: Usuário logado atualmente simulado para a trava de Auto-Inativação
     const USUARIO_LOGADO_ID = "usr_admin_001";
@@ -97,6 +101,17 @@ export default function UsuariosPage() {
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>
+
+                        <Button
+                            variant="secondary"
+                            onClick={async () => {
+                                const res = await actionLimparUsuariosTeste();
+                                toast({ title: res.ok ? "Ambiente Limpo" : "Falha na Limpeza", description: res.msg });
+                            }}
+                        >
+                            <Mail className="mr-2 h-4 w-4" />
+                            [DEV] Limpar Lixo (Lucas/Coz)
+                        </Button>
 
                         <Button onClick={abrirModalNovo}>
                             <Plus className="mr-2 h-4 w-4" />

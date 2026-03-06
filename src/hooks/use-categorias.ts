@@ -15,11 +15,22 @@ export function useCategorias(tipoPredefinido?: TipoCategoria) {
     const { empresaId, carregandoTenant } = useTenant();
 
     const carregarCategorias = useCallback(async (tipoBusca?: TipoCategoria) => {
-        if (carregandoTenant || !empresaId) return;
+        if (carregandoTenant) return;
+
+        if (!empresaId) {
+            setIsCarregando(false);
+            return;
+        }
+
         setIsCarregando(true);
         setErro(null);
         try {
             const data = await repositorioCategorias.obterTodas(tipoBusca || tipoPredefinido, empresaId);
+            if (!Array.isArray(data)) {
+                console.error("obterTodas() não retornou array:", data);
+                setCategorias([]);
+                return;
+            }
             // Ordenar por "ordem"
             const dataOrdenada = data.sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
             setCategorias(dataOrdenada);

@@ -150,6 +150,19 @@ export async function criarEmpresaService(data: CriarEmpresaInput): Promise<Cria
     } catch (error: any) {
         console.error("[CRIAR_EMPRESA_SERVICE] Falha interna não tratada:", error);
 
+        // Fail-safe: Se o usuário foi criado no Firebase Auth mas o banco falhou, deletar do Auth.
+        if (data.emailResponsavel) {
+            try {
+                const userCorrompido = await adminAuth.getUserByEmail(data.emailResponsavel);
+                if (userCorrompido) {
+                    await adminAuth.deleteUser(userCorrompido.uid);
+                    console.log(`[CRIAR_EMPRESA_SERVICE] Usuário orfão (${userCorrompido.uid}) apagado por falha no Firestore.`);
+                }
+            } catch (cleanupError) {
+                console.warn("[CRIAR_EMPRESA_SERVICE] Falha ao tentar limpar o User do Auth após erro do banco:", cleanupError);
+            }
+        }
+
         const errMsg = error?.message || "";
         if (errMsg.includes("default credentials") || errMsg.includes("Could not load the default credentials") || errMsg.includes("FIREBASE_ADMIN_NOT_CONFIGURED")) {
             return {

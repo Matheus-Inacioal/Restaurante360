@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
 import { repositorioAuditoriaFirestore } from '@/lib/repositories/repositorio-auditoria-firestore';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { firebaseConfig } from '@/firebase/config';
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+import { adminDb } from '@/server/firebase/admin';
 import { LogAuditoria } from '@/lib/types/auditoria';
+
+const db = adminDb;
 
 export async function POST(request: Request) {
     try {

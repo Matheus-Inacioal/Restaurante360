@@ -162,7 +162,7 @@ export default function PortalSistemaDashboard() {
         setIsSubmitting(true);
 
         try {
-            let dataCobrancaIso = "";
+            let dataCobrancaIso: string | undefined = undefined;
             if (novoVencimentoPrimeiraCobranca) {
                 dataCobrancaIso = new Date(novoVencimentoPrimeiraCobranca + "T12:00:00.000Z").toISOString();
             }
@@ -176,7 +176,7 @@ export default function PortalSistemaDashboard() {
                 planoId: novoPlano,
                 status: novoStatus,
                 diasTrial: novoDiasTrial,
-                vencimentoPrimeiraCobrancaEm: dataCobrancaIso
+                ...(dataCobrancaIso && { vencimentoPrimeiraCobrancaEm: dataCobrancaIso })
             };
 
             type CriarEmpresaResponse = {

@@ -3,7 +3,7 @@
 import { initializeApp, getApps, FirebaseOptions } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc } from 'firebase/firestore';
-import { firebaseConfig } from '@/firebase/config';
+import { firebaseConfig } from '@/lib/firebase/client';
 import type { UserRole } from '@/lib/types';
 
 interface NewUserData {

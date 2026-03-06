@@ -36,10 +36,10 @@ export const repositorioEmpresasAdmin = {
             whatsappResponsavel: dados.whatsappResponsavel,
             diasTrial: dados.diasTrial,
             ...(dados.vencimentoPrimeiraCobrancaEm && {
-                vencimentoPrimeiraCobrancaEm: new Date(dados.vencimentoPrimeiraCobrancaEm + "T12:00:00.000Z")
+                vencimentoPrimeiraCobrancaEm: new Date(dados.vencimentoPrimeiraCobrancaEm)
             }),
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp(),
+            criadoEm: new Date(),
+            atualizadoEm: new Date(),
         };
 
         if (batch) {

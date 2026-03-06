@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/server/firebase/admin';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
 import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
@@ -58,9 +57,13 @@ export async function POST(req: Request) {
 
         const batch = adminDb.batch();
 
-        if (isNewUser) {
-            // Se for novo perfil, cria um registro em /usuarios
-            const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
+        // Verifica se o perfil global existe independentemente de isNewUser
+        // Isso previne que contas "fantasmas" no Auth que falharam em salvar no Firestore
+        // fiquem para sempre sem registro ao tentar adicionar novamente.
+        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
+        const globalDoc = await usuarioGlobalRef.get();
+
+        if (!globalDoc.exists) {
             batch.set(usuarioGlobalRef, {
                 uid: uid,
                 email: emailLimpo,
@@ -68,8 +71,8 @@ export async function POST(req: Request) {
                 papelPortal: "OPERACIONAL",
                 empresaId: empresaId,
                 ativo: true,
-                criadoEm: FieldValue.serverTimestamp(),
-                atualizadoEm: FieldValue.serverTimestamp()
+                criadoEm: new Date(),
+                atualizadoEm: new Date()
             });
         }
 
@@ -91,7 +94,7 @@ export async function POST(req: Request) {
             email: emailLimpo,
             papel: data.papel,
             ativo: true,
-            criadoEm: FieldValue.serverTimestamp()
+            criadoEm: new Date()
         });
 
         // Registrar auditoria
@@ -103,10 +106,19 @@ export async function POST(req: Request) {
             entidadeId: uid,
             criadoPor: authResult.sessao.uid,
             detalhes: `Usuário '${data.nome}' adicionado à equipe como '${data.papel}'`,
-            criadoEm: FieldValue.serverTimestamp()
+            criadoEm: new Date()
         });
 
-        await batch.commit();
+        try {
+            await batch.commit();
+        } catch (dbError: any) {
+            console.error("[CRIAR_USUARIO_EMPRESA] Erro fatal no Firestore Transaction:", dbError);
+            if (isNewUser && uid) {
+                console.warn(`[CRIAR_USUARIO_EMPRESA] Revertendo criação de Auth e apagando órfão UID: ${uid}`);
+                await adminAuth.deleteUser(uid).catch(() => { });
+            }
+            return jsonErro(`Falha ao salvar usuário no banco: ${dbError.message}`, "FIRESTORE_ERROR", 500);
+        }
 
         // TODO: Enviar email convidando com `senhaGerada` (para `isNewUser = true`)
 
@@ -117,6 +129,11 @@ export async function POST(req: Request) {
 
     } catch (error: any) {
         console.error("[CRIAR_USUARIO_EMPRESA] Erro:", error);
+
+        // Fail-safe: Se o database reverter ou falhar atômica, tentamos apagar a conta orfã.
+        // Como o req.json() já foi lido e não pode ser re-lido nativamente no catch se falhou antes, 
+        // vamos garantir que pelo menos o erro 500 retorne corretamente para a UI.
+
         return jsonErro("Falha interna ao criar usuário da empresa.", "INTERNAL_ERROR", 500);
     }
 }

@@ -20,13 +20,23 @@ export function useTarefas() {
     const { perfilUsuario, carregandoPerfil } = usePerfil();
 
     const carregarTarefas = useCallback(async () => {
-        if (carregandoTenant || carregandoPerfil || !empresaId) return;
+        if (carregandoTenant || carregandoPerfil) return;
+
+        if (!empresaId) {
+            setIsCarregando(false);
+            return;
+        }
 
         setIsCarregando(true);
         setErro(null);
         try {
             // Context Local via FB Auth
             const data = await repositorioTarefas.obterTodas(empresaId);
+            if (!Array.isArray(data)) {
+                console.error("obterTodas() não retornou array:", data);
+                setTarefas([]);
+                return;
+            }
             setTarefas(data);
         } catch (error) {
             console.error("Falha ao carregar tarefas:", error);

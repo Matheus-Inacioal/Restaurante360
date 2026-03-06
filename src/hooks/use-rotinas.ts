@@ -22,12 +22,22 @@ export function useRotinas() {
     const { perfilUsuario, carregandoPerfil } = usePerfil();
 
     const carregarRotinas = useCallback(async () => {
-        if (carregandoTenant || carregandoPerfil || !empresaId) return;
+        if (carregandoTenant || carregandoPerfil) return;
+
+        if (!empresaId) {
+            setIsCarregando(false);
+            return;
+        }
 
         setIsCarregando(true);
         setErro(null);
         try {
             const data = await repositorioRotinas.obterTodas(empresaId);
+            if (!Array.isArray(data)) {
+                console.error("obterTodas() não retornou array:", data);
+                setRotinas([]);
+                return;
+            }
             setRotinas(data);
         } catch (error) {
             console.error("Falha ao carregar rotinas:", error);

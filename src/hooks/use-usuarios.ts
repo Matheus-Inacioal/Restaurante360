@@ -15,12 +15,22 @@ export function useUsuarios() {
     const { empresaId, carregandoTenant } = useTenant();
 
     const carregarUsuarios = useCallback(async () => {
-        if (carregandoTenant || !empresaId) return;
+        if (carregandoTenant) return;
+
+        if (!empresaId) {
+            setIsCarregando(false);
+            return;
+        }
 
         setIsCarregando(true);
         setErro(null);
         try {
             const data = await repositorioUsuarios.listarUsuarios(empresaId);
+            if (!Array.isArray(data)) {
+                console.error("obterTodas() não retornou array:", data);
+                setUsuarios([]);
+                return;
+            }
             setUsuarios(data);
         } catch (error: any) {
             console.error("Falha ao carregar usuários:", error);

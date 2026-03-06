@@ -16,11 +16,22 @@ export function useProcessos() {
     const { empresaId, carregandoTenant } = useTenant();
 
     const carregarProcessos = useCallback(async () => {
-        if (carregandoTenant || !empresaId) return;
+        if (carregandoTenant) return;
+
+        if (!empresaId) {
+            setIsCarregando(false);
+            return;
+        }
+
         setIsCarregando(true);
         setErro(null);
         try {
             const data = await repositorioProcessos.listarTodos(empresaId);
+            if (!Array.isArray(data)) {
+                console.error("obterTodas() não retornou array:", data);
+                setProcessos([]);
+                return;
+            }
             setProcessos(data);
         } catch (error) {
             console.error("Erro carregrar processos:", error);

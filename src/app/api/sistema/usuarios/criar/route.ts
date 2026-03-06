@@ -61,8 +61,8 @@ export async function POST(req: Request) {
             papelSistema: data.papel,
             empresaId: null, // Usuários de sistema normalmente não têm tenant
             ativo: true,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp()
+            criadoEm: new Date(),
+            atualizadoEm: new Date()
         });
 
         // Registrar auditoria
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
             entidadeId: uid,
             criadoPor: authResult.sessao.uid,
             detalhes: `Usuário ${data.nome} criado com papel ${data.papel}`,
-            criadoEm: FieldValue.serverTimestamp()
+            criadoEm: new Date()
         });
 
         // Aqui dispararíamos o envio de e-mail com a senha

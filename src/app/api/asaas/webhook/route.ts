@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
 import { processarWebhookAsaas } from '@/server/financeiro/servicos/processar-webhook-asaas';
 import { repositorioAuditoriaFirestore } from '@/lib/repositories/repositorio-auditoria-firestore';
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { firebaseConfig } from '@/firebase/config';
+import { adminDb } from '@/server/firebase/admin';
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app);
+// O webhook de rotina do ASAAS usa o adminDb para registrar logs.
+const db = adminDb;
 
 // Token mock simples de seguranca local. Num envio real O asaas manda header "asaas-access-token"
 const WEBHOOK_TOKEN = process.env.ASAAS_WEBHOOK_TOKEN || 'segredowebhook';
