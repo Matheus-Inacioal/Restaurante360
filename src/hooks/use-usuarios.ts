@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { UsuarioSistema } from "../lib/types/usuarios";
 import { repositorioUsuarios } from "../lib/repositories/usuarios-repository";
 import { useToast } from "@/hooks/use-toast";
+import { useTenant } from "./use-tenant";
 
 export function useUsuarios() {
     const [usuarios, setUsuarios] = useState<UsuarioSistema[]>([]);
@@ -11,12 +12,15 @@ export function useUsuarios() {
     const [erro, setErro] = useState<string | null>(null);
 
     const { toast } = useToast();
+    const { empresaId, carregandoTenant } = useTenant();
 
     const carregarUsuarios = useCallback(async () => {
+        if (carregandoTenant || !empresaId) return;
+
         setIsCarregando(true);
         setErro(null);
         try {
-            const data = await repositorioUsuarios.listarUsuarios();
+            const data = await repositorioUsuarios.listarUsuarios(empresaId);
             setUsuarios(data);
         } catch (error: any) {
             console.error("Falha ao carregar usuários:", error);
@@ -29,17 +33,18 @@ export function useUsuarios() {
         } finally {
             setIsCarregando(false);
         }
-    }, [toast]);
+    }, [toast, empresaId, carregandoTenant]);
 
     useEffect(() => {
         carregarUsuarios();
-    }, [carregarUsuarios]);
+    }, [carregarUsuarios, empresaId, carregandoTenant]);
 
     const adicionarUsuario = async (
         dados: Omit<UsuarioSistema, "id" | "criadoEm" | "atualizadoEm">
     ) => {
         try {
-            const payload = { ...dados };
+            if (!empresaId) throw new Error("Acesso negado.");
+            const payload = { ...dados, empresaId } as any;
 
             const novo = await repositorioUsuarios.criarUsuario(payload);
             setUsuarios((prev) => [...prev, novo]);
@@ -61,7 +66,8 @@ export function useUsuarios() {
 
     const editarUsuario = async (id: string, atualizacoes: Partial<UsuarioSistema>) => {
         try {
-            const atualizado = await repositorioUsuarios.atualizarUsuario(id, atualizacoes);
+            if (!empresaId) throw new Error("Acesso negado.");
+            const atualizado = await repositorioUsuarios.atualizarUsuario(id, empresaId, atualizacoes);
             setUsuarios((prev) => prev.map((u) => (u.id === id ? atualizado : u)));
 
             toast({
@@ -83,7 +89,8 @@ export function useUsuarios() {
 
     const inativar = async (id: string, nomeUsuario: string) => {
         try {
-            await repositorioUsuarios.inativarUsuario(id);
+            if (!empresaId) throw new Error("Acesso negado.");
+            await repositorioUsuarios.inativarUsuario(id, empresaId);
             setUsuarios((prev) =>
                 prev.map((u) => (u.id === id ? { ...u, status: "inativo", atualizadoEm: new Date().toISOString() } : u))
             );
@@ -104,7 +111,8 @@ export function useUsuarios() {
 
     const reativar = async (id: string, nomeUsuario: string) => {
         try {
-            await repositorioUsuarios.reativarUsuario(id);
+            if (!empresaId) throw new Error("Acesso negado.");
+            await repositorioUsuarios.reativarUsuario(id, empresaId);
             setUsuarios((prev) =>
                 prev.map((u) => (u.id === id ? { ...u, status: "ativo", atualizadoEm: new Date().toISOString() } : u))
             );

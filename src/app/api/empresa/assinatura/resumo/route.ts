@@ -9,7 +9,7 @@ export async function GET(request: Request) {
         const empresaId = searchParams.get('empresaId');
 
         if (!empresaId) {
-            return NextResponse.json({ erro: 'ID da Empresa é obrigatório.' }, { status: 400 });
+            return NextResponse.json({ ok: false, code: "VALIDATION_ERROR", message: 'ID da Empresa é obrigatório.' }, { status: 400 });
         }
 
         // Simulação de check de Roles no Admin. O interceptor fará o middleware real no futuro.
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         const empresa = await repositorioEmpresasAdmin.obterEmpresaPorId(empresaId);
 
         if (!empresa) {
-            return NextResponse.json({ erro: 'Empresa não encontrada.' }, { status: 404 });
+            return NextResponse.json({ ok: false, code: "NOT_FOUND", message: 'Empresa não encontrada.' }, { status: 404 });
         }
 
         let planoNomeDisplay = empresa.planoNome || 'Plano Base';
@@ -34,23 +34,26 @@ export async function GET(request: Request) {
         const ultimaCobranca = cobrancas.length > 0 ? cobrancas[0] : null;
 
         return NextResponse.json({
-            status: empresa.status,
-            planoAtual: {
-                id: empresa.planoId,
-                nome: planoNomeDisplay
-            },
-            ciclo: empresa.cicloPagamento,
-            valorAtual: empresa.valorAtual || 0,
-            proximoVencimentoEm: ultimaCobranca && ultimaCobranca.status === 'PENDING' ? ultimaCobranca.vencimento : null,
-            flags: {
-                temBoletoPdf: ultimaCobranca && !!ultimaCobranca.bankSlipUrl,
-                temPixCopiaECola: ultimaCobranca && !!ultimaCobranca.pixPayload
-            },
-            trialFim: empresa.trialFim,
-            asaasCustomerId: empresa.asaasCustomerId
+            ok: true,
+            data: {
+                status: empresa.status,
+                planoAtual: {
+                    id: empresa.planoId,
+                    nome: planoNomeDisplay
+                },
+                ciclo: empresa.cicloPagamento,
+                valorAtual: empresa.valorAtual || 0,
+                proximoVencimentoEm: ultimaCobranca && ultimaCobranca.status === 'PENDING' ? ultimaCobranca.vencimento : null,
+                flags: {
+                    temBoletoPdf: ultimaCobranca && !!ultimaCobranca.bankSlipUrl,
+                    temPixCopiaECola: ultimaCobranca && !!ultimaCobranca.pixPayload
+                },
+                trialFim: empresa.trialFim,
+                asaasCustomerId: empresa.asaasCustomerId
+            }
         });
     } catch (error: any) {
         console.error("Erro fetch resumo assinatura:", error);
-        return NextResponse.json({ erro: 'Falha interna' }, { status: 500 });
+        return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: 'Falha interna' }, { status: 500 });
     }
 }

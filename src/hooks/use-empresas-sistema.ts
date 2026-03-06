@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { fetchJSON, FetchJsonError } from '@/lib/http/fetch-json';
 
 export type CriarEmpresaInput = {
-    nome: string;
+    nomeEmpresa: string;
     cnpj: string;
-    responsavelNome: string;
-    email: string;
+    nomeResponsavel: string;
+    emailResponsavel: string;
     whatsappResponsavel: string;
     planoId: string;
     diasTrial?: number;
@@ -36,9 +36,9 @@ export function useEmpresasSistema() {
             return true;
         } catch (error) {
             const err = error as FetchJsonError;
-            if (err.status === 400 && err.details) {
+            if (err.status === 400 && err.issues) {
                 // Zod issues map
-                setFieldErrors(err.details as Record<string, string[]>);
+                setFieldErrors(err.issues as Record<string, string[]>);
             } else {
                 setGlobalError(err.message || 'Ocorreu um erro ao criar a empresa.');
             }

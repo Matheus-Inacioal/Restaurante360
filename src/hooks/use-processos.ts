@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import type { Processo } from "../lib/types/processos";
 import { repositorioProcessos } from "../lib/repositories/repositorio-processos";
 import { useToast } from "./use-toast";
+import { useTenant } from "./use-tenant";
 
 export function useProcessos() {
     const [processos, setProcessos] = useState<Processo[]>([]);
@@ -12,12 +13,14 @@ export function useProcessos() {
     const [erro, setErro] = useState<string | null>(null);
 
     const { toast } = useToast();
+    const { empresaId, carregandoTenant } = useTenant();
 
     const carregarProcessos = useCallback(async () => {
+        if (carregandoTenant || !empresaId) return;
         setIsCarregando(true);
         setErro(null);
         try {
-            const data = await repositorioProcessos.listarTodos();
+            const data = await repositorioProcessos.listarTodos(empresaId);
             setProcessos(data);
         } catch (error) {
             console.error("Erro carregrar processos:", error);
@@ -26,15 +29,16 @@ export function useProcessos() {
         } finally {
             setIsCarregando(false);
         }
-    }, [toast]);
+    }, [toast, empresaId, carregandoTenant]);
 
     useEffect(() => {
         carregarProcessos();
-    }, [carregarProcessos]);
+    }, [carregarProcessos, empresaId, carregandoTenant]);
 
     const criarProcesso = async (dados: Omit<Processo, "id" | "criadoEm" | "atualizadoEm" | "ativo" | "versao">) => {
         try {
-            const novo = await repositorioProcessos.criar(dados);
+            if (!empresaId) throw new Error("Acesso negado.");
+            const novo = await repositorioProcessos.criar({ ...dados, empresaId } as any);
             setProcessos(prev => [novo, ...prev]);
             toast({ title: "Sucesso", description: `Processo "${novo.titulo}" cadastrado.` });
             return novo;
@@ -46,7 +50,8 @@ export function useProcessos() {
 
     const editarProcesso = async (id: string, atualizacoes: Partial<Omit<Processo, "id" | "criadoEm" | "atualizadoEm" | "versao">>) => {
         try {
-            const up = await repositorioProcessos.atualizar(id, atualizacoes);
+            if (!empresaId) throw new Error("Acesso negado.");
+            const up = await repositorioProcessos.atualizar(id, empresaId, atualizacoes);
             setProcessos(prev => prev.map(p => p.id === id ? up : p));
             toast({ title: "Sucesso", description: `Processo atualizado para a versão ${up.versao}.` });
             return up;
@@ -58,8 +63,9 @@ export function useProcessos() {
 
     const alternarStatusProcesso = async (processo: Processo) => {
         try {
+            if (!empresaId) throw new Error("Acesso negado.");
             const statusTarget = !processo.ativo;
-            const up = await repositorioProcessos.atualizar(processo.id, { ativo: statusTarget });
+            const up = await repositorioProcessos.atualizar(processo.id, empresaId, { ativo: statusTarget });
             setProcessos(prev => prev.map(p => p.id === processo.id ? up : p));
             toast({ title: statusTarget ? "Ativado" : "Inativado", description: `O processo foi ${statusTarget ? "reativado" : "suspenso"}.` });
             return up;
@@ -70,7 +76,8 @@ export function useProcessos() {
 
     const excluirProcesso = async (id: string) => {
         try {
-            await repositorioProcessos.excluir(id);
+            if (!empresaId) throw new Error("Acesso negado.");
+            await repositorioProcessos.excluir(id, empresaId);
             setProcessos(prev => prev.filter(p => p.id !== id));
             if (processoSelecionadoId === id) setProcessoSelecionadoId(null);
             toast({ title: "Processo Deletado", description: "Removido permanentemente da base local." });

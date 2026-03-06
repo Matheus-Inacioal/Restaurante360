@@ -1,12 +1,14 @@
+import "server-only";
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/server/firebase/admin';
-import { gerarSenhaTemporaria } from '@/server/utils/gerar-senha-temporaria';
+import { repositorioEmpresasAdmin } from '@/server/repositories/repositorio-empresas';
+import { repositorioUsuariosAdmin } from '@/server/repositories/repositorio-usuarios';
 
 export interface CriarEmpresaInput {
-    nome: string;
+    nomeEmpresa: string;
     cnpj: string;
-    responsavelNome: string;
-    email: string;
+    nomeResponsavel: string;
+    emailResponsavel: string;
     whatsappResponsavel: string;
     planoId: string;
     diasTrial: number;
@@ -17,10 +19,15 @@ export interface CriarEmpresaResult {
     ok: boolean;
     empresaId?: string;
     usuarioId?: string;
-    senhaTemporaria?: string;
+    emailResponsavel?: string;
+    linkPrimeiroAcesso?: string;
+    statusEmpresa?: string;
     message?: string;
     code?: string;
+    originalError?: any;
 }
+
+const APP_URL = process.env.APP_URL || "http://localhost:9002";
 
 /**
  * Serviço responsável por orquestrar a criação de uma nova empresa (Tenant),
@@ -28,29 +35,22 @@ export interface CriarEmpresaResult {
  */
 export async function criarEmpresaService(data: CriarEmpresaInput): Promise<CriarEmpresaResult> {
     try {
-        console.log(`[CRIAR_EMPRESA_SERVICE] Iniciando provisionamento para: ${data.nome} (${data.cnpj})`);
+        console.log(`[CRIAR_EMPRESA_SERVICE] Iniciando provisionamento para: ${data.nomeEmpresa} (${data.cnpj})`);
 
-        // Preparar datas
-        const hoje = new Date();
-        const trialFim = new Date(hoje);
-        trialFim.setDate(hoje.getDate() + data.diasTrial);
+        // Preparar status da empresa com base no trial
+        const statusEmpresa = data.diasTrial > 0 ? "TRIAL_ATIVO" : "ATIVA";
 
-        // Gera IDs do Firestore antecipadamente
+        // Gerar IDs do Firestore antecipadamente
         const empresaRef = adminDb.collection("empresas").doc();
         const empresaId = empresaRef.id;
-        const assinaturaRef = adminDb.collection("financeiro_assinaturas").doc();
-        const aceiteRef = adminDb.collection("financeiro_aceites").doc();
-        const aceiteToken = aceiteRef.id;
 
-        // 1. Gerar senha e criar o usuário no Firebase Auth
-        const senhaGerada = gerarSenhaTemporaria();
+        // 1. Criar o usuário no Firebase Auth (sem senha, usará o link)
+        console.log("[CRIAR_EMPRESA_SERVICE] 1. Criando usuário no Firebase Auth");
         let userRecord;
-
         try {
             userRecord = await adminAuth.createUser({
-                email: data.email,
-                password: senhaGerada,
-                displayName: data.responsavelNome,
+                email: data.emailResponsavel,
+                displayName: data.nomeResponsavel,
             });
         } catch (authError: any) {
             console.error("[CRIAR_EMPRESA_SERVICE] Erro no Auth:", authError);
@@ -58,97 +58,113 @@ export async function criarEmpresaService(data: CriarEmpresaInput): Promise<Cria
                 return {
                     ok: false,
                     code: "EMAIL_JA_EXISTE",
-                    message: "Este e-mail já está em uso por outro usuário."
+                    message: "Já existe um usuário com este e-mail.",
+                    originalError: authError
                 };
             }
-            throw authError; // Lança para o catch externo
+            throw authError;
         }
 
         const uid = userRecord.uid;
+        console.log(`[CRIAR_EMPRESA_SERVICE] -> Usuário Auth criado com UID: ${uid}`);
 
         // 2. Transação Atômica (Batch write) no Firestore
+        console.log("[CRIAR_EMPRESA_SERVICE] 2. Configurando transação no Firestore (Batch)");
         const batch = adminDb.batch();
 
         // 2.1 Criar empresa (Tenant)
-        batch.set(empresaRef, {
-            nome: data.nome,
-            cnpj: data.cnpj,
-            responsavelEmail: data.email,
-            whatsappResponsavel: data.whatsappResponsavel,
-            status: "TRIAL_ATIVO",
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp() // Mantendo a consistência pedida
-        });
+        console.log("[CRIAR_EMPRESA_SERVICE] -> Adicionando Empresa ao batch");
+        repositorioEmpresasAdmin.criarEmpresa(
+            empresaId,
+            {
+                nomeEmpresa: data.nomeEmpresa,
+                cnpj: data.cnpj,
+                planoId: data.planoId,
+                status: statusEmpresa,
+                emailResponsavel: data.emailResponsavel,
+                nomeResponsavel: data.nomeResponsavel,
+                whatsappResponsavel: data.whatsappResponsavel,
+                diasTrial: data.diasTrial,
+                vencimentoPrimeiraCobrancaEm: data.vencimentoPrimeiraCobrancaEm,
+            },
+            batch
+        );
 
         // 2.2 Criar perfil global em "usuarios"
-        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
-        batch.set(usuarioGlobalRef, {
-            uid: uid,
-            email: data.email,
-            nome: data.responsavelNome,
-            papelPortal: "EMPRESA",
-            papelEmpresa: "GESTOR",
-            empresaId: empresaId,
-            ativo: true,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp()
-        });
+        console.log("[CRIAR_EMPRESA_SERVICE] -> Adicionando Perfil Global ao batch");
+        repositorioUsuariosAdmin.criarPerfilGlobal(
+            {
+                uid,
+                email: data.emailResponsavel,
+                nome: data.nomeResponsavel,
+                papelPortal: "EMPRESA",
+                papelEmpresa: "GESTOR",
+                empresaId,
+                ativo: true,
+            },
+            batch
+        );
 
-        // 2.3 Criar referência do usuário dentro da empresa (opcional para alguns sistemas, mas mantido pra segurança local do tenant)
-        const usuarioEmpresaRef = empresaRef.collection("usuarios").doc(uid);
-        batch.set(usuarioEmpresaRef, {
-            uid: uid,
-            nome: data.responsavelNome,
-            papel: "GESTOR",
-            ativo: true,
-            criadoEm: FieldValue.serverTimestamp()
-        });
-
-        // 2.4 Criar plano de assinatura associado
-        batch.set(assinaturaRef, {
-            empresaId: empresaId,
-            plano: data.planoId,
-            status: "TRIAL",
-            diasTrial: data.diasTrial,
-            criadoEm: FieldValue.serverTimestamp()
-        });
-
-        // 2.5 Criar aceite pendente
-        batch.set(aceiteRef, {
-            empresaId: empresaId,
-            token: aceiteToken,
-            status: "PENDENTE",
-            expiraEm: trialFim,
-            criadoEm: FieldValue.serverTimestamp()
-        });
+        // 2.3 Referência do usuário dentro da empresa
+        console.log("[CRIAR_EMPRESA_SERVICE] -> Adicionando Vínculo Usuário-Empresa ao batch");
+        repositorioUsuariosAdmin.criarUsuarioEmpresa(
+            {
+                uid,
+                empresaId,
+                email: data.emailResponsavel,
+                nome: data.nomeResponsavel,
+                papel: "GESTOR",
+                ativo: true,
+            },
+            batch
+        );
 
         // Efetivar a gravação atômica
+        console.log("[CRIAR_EMPRESA_SERVICE] 3. Efetuando o commit da transação no Firestore...");
         await batch.commit();
-        console.log(`[CRIAR_EMPRESA_SERVICE] Transação do banco concluída. EmpresaId: ${empresaId}, UID: ${uid}`);
+        console.log(`[CRIAR_EMPRESA_SERVICE] Transação concluída com sucesso. EmpresaId: ${empresaId}, UID: ${uid}`);
+
+        // 3. Gerar link de primeiro acesso (Firebase Auth reset link)
+        console.log("[CRIAR_EMPRESA_SERVICE] 4. Gerando link de primeiro acesso");
+        let linkPrimeiroAcesso: string | undefined;
+        try {
+            linkPrimeiroAcesso = await adminAuth.generatePasswordResetLink(data.emailResponsavel, {
+                url: `${APP_URL}/login`,
+            });
+            console.log("[CRIAR_EMPRESA_SERVICE] -> Link gerado com sucesso.");
+        } catch (linkError) {
+            console.warn("[CRIAR_EMPRESA_SERVICE] Não foi possível gerar link de convite:", linkError);
+        }
+
+        console.log(`[CRIAR_EMPRESA_SERVICE] 5. Fluxo de Criação Finalizado com Sucesso para empresa ${data.nomeEmpresa}`);
 
         return {
             ok: true,
-            empresaId: empresaId,
+            empresaId,
             usuarioId: uid,
-            senhaTemporaria: senhaGerada // Fundamental para a mensageria subsequente
+            emailResponsavel: data.emailResponsavel,
+            statusEmpresa,
+            linkPrimeiroAcesso,
         };
 
     } catch (error: any) {
-        console.error("[CRIAR_EMPRESA_SERVICE] Falha interna:", error);
+        console.error("[CRIAR_EMPRESA_SERVICE] Falha interna não tratada:", error);
 
         const errMsg = error?.message || "";
-        if (errMsg.includes("default credentials") || errMsg.includes("Could not load the default credentials")) {
+        if (errMsg.includes("default credentials") || errMsg.includes("Could not load the default credentials") || errMsg.includes("FIREBASE_ADMIN_NOT_CONFIGURED")) {
             return {
                 ok: false,
                 code: "FIREBASE_ADMIN_CREDENTIALS",
-                message: "Firebase Admin não configurado no ambiente."
+                message: "Firebase Admin não configurado corretamente.",
+                originalError: error
             };
         }
 
         return {
             ok: false,
             code: "INTERNAL_ERROR",
-            message: "Falha na criação da empresa ou banco de dados."
+            message: "Falha na criação da empresa ou banco de dados.",
+            originalError: error
         };
     }
 }

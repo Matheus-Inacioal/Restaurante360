@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { formatarCNPJ, formatarTelefoneBR } from '@/lib/formatadores/formato';
 import { fetchJSON, FetchJsonError } from '@/lib/http/fetch-json';
 import { useToast } from '@/hooks/use-toast';
-import { Building2, Mail, Phone, Calendar, Hash, Banknote, Edit2, ShieldAlert, CheckCircle2, XCircle, PauseCircle, Trash2, AlertCircle } from 'lucide-react';
+import { Building2, Mail, Phone, Calendar, Hash, Banknote, Edit2, ShieldAlert, CheckCircle2, XCircle, PauseCircle, Trash2, AlertCircle, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // ==========================================
 // UTILS FORMATADORES
@@ -58,26 +59,7 @@ const sanitizeDigits = (value: string) => value.replace(/\D/g, '');
 // ==========================================
 // SCHEMAS E TIPOS
 // ==========================================
-type EmpresaDetalhes = {
-    empresaId: string;
-    nomeEmpresa: string;
-    cnpj?: string;
-    status: string;
-    planoId?: string;
-    planoNome?: string;
-    diasTrial?: number;
-    responsavelNome?: string;
-    responsavelEmail?: string;
-    whatsappResponsavel?: string;
-    criadoEm?: any;
-    atualizadoEm?: any;
-    assinaturaAtual?: {
-        id: string;
-        status: string;
-        planoId: string;
-        diasTrial?: number;
-    };
-};
+import { EmpresaAtualizada } from '@/lib/types/financeiro';
 
 const formSchema = z.object({
     nomeEmpresa: z.string().trim().min(2, "Nome da empresa é obrigatório").max(120),
@@ -107,7 +89,7 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
     // States Vitais
     const [carregando, setCarregando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
-    const [empresa, setEmpresa] = useState<EmpresaDetalhes | null>(null);
+    const [empresa, setEmpresa] = useState<EmpresaAtualizada | null>(null);
 
     // States Secundários Operacionais
     const [isSaving, setIsSaving] = useState(false);
@@ -116,6 +98,15 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
 
     const [isEditing, setIsEditing] = useState(false);
     const [alertExcluirOpen, setAlertExcluirOpen] = useState(false);
+    const [isSendingReset, setIsSendingReset] = useState(false);
+
+    // States da Senha Temporária
+    const [isDialogSenhaOpen, setIsDialogSenhaOpen] = useState(false);
+    const [isSavingSenha, setIsSavingSenha] = useState(false);
+    const [novaSenhaTemporaria, setNovaSenhaTemporaria] = useState("");
+    const [confirmarSenhaTemporaria, setConfirmarSenhaTemporaria] = useState("");
+    const [forcarTrocaSenha, setForcarTrocaSenha] = useState(true);
+    const [erroSenha, setErroSenha] = useState("");
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -140,21 +131,21 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
         }
 
         try {
-            const res = await fetchJSON<{ ok: boolean; data: EmpresaDetalhes; message?: string }>(`/api/sistema/empresas/${empresaId}`);
+            const res = await fetchJSON<EmpresaAtualizada>(`/api/sistema/empresas/${empresaId}`);
 
             if (res.ok && res.data) {
                 setEmpresa(res.data);
                 form.reset({
-                    nomeEmpresa: res.data.nomeEmpresa || '',
+                    nomeEmpresa: res.data.nome || '',
                     cnpj: formatarCNPJ(res.data.cnpj || ''),
                     nomeResponsavel: res.data.responsavelNome || '',
                     emailResponsavel: res.data.responsavelEmail || '',
                     whatsappResponsavel: formatarTelefoneBR(res.data.whatsappResponsavel || ''),
-                    planoId: res.data.assinaturaAtual?.planoId || res.data.planoId || 'Starter',
+                    planoId: res.data.planoId || 'Starter',
                     status: (res.data.status as any) || 'ATIVO',
                 });
             } else {
-                setErro(res.message || "Falha ao carregar empresa.");
+                setErro("Falha ao carregar empresa.");
                 setEmpresa(null);
             }
         } catch (error: any) {
@@ -175,6 +166,10 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
             setErro(null);
             setCarregando(false);
             setIsEditing(false);
+            setIsDialogSenhaOpen(false);
+            setNovaSenhaTemporaria("");
+            setConfirmarSenhaTemporaria("");
+            setErroSenha("");
             form.reset();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -185,7 +180,11 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
         try {
             // Limpa antes de enviar (mas z.string já envia puro, aqui ajudamos a garantir dígitos puros)
             const payloadLimpo = {
-                ...data,
+                nome: data.nomeEmpresa,
+                responsavelNome: data.nomeResponsavel,
+                responsavelEmail: data.emailResponsavel,
+                planoId: data.planoId,
+                status: data.status,
                 cnpj: sanitizeDigits(data.cnpj),
                 whatsappResponsavel: sanitizeDigits(data.whatsappResponsavel)
             };
@@ -201,8 +200,8 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
             onUpdated();
         } catch (error: any) {
             const err = error as FetchJsonError;
-            if (err.details) {
-                const detalhes = err.details as Record<string, string[]>;
+            if (err.issues) {
+                const detalhes = err.issues as Record<string, string[]>;
                 Object.keys(detalhes).forEach((key) => {
                     form.setError(key as keyof FormValues, { message: detalhes[key][0] });
                 });
@@ -221,8 +220,8 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
     const handleMudarStatus = async (novoStatus: string) => {
         setIsStatusChanging(true);
         try {
-            await fetchJSON(`/api/sistema/empresas/${empresaId}/status`, {
-                method: 'PATCH',
+            await fetchJSON(`/api/sistema/empresas/${empresaId}`, {
+                method: 'PUT',
                 body: JSON.stringify({ status: novoStatus })
             });
 
@@ -254,6 +253,89 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
         }
     };
 
+    const handleEnviarReset = async () => {
+        if (!empresa || !empresaId) return;
+        setIsSendingReset(true);
+        try {
+            const res = await fetchJSON<{ debugLink?: string }>('/api/sistema/empresas/enviar-reset-senha', {
+                method: 'POST',
+                body: JSON.stringify({
+                    empresaId,
+                    emailLogin: empresa.responsavelEmail,
+                    nomeEmpresa: empresa.nome,
+                    nomeResponsavel: empresa.responsavelNome,
+                }),
+            });
+
+            if (!res.ok) {
+                toast({ title: 'Erro', description: (res as any).message || 'Não foi possível enviar o e-mail.', variant: 'destructive' });
+                return;
+            }
+
+            const debugLink = (res as any).debugLink;
+            if (debugLink) {
+                toast({
+                    title: 'DEV — Link de redefinição',
+                    description: 'Nenhum provedor de e-mail configurado. Copie o link abaixo.',
+                    action: (
+                        <button className="text-xs underline" onClick={() => navigator.clipboard.writeText(debugLink)}>Copiar link</button>
+                    ) as any,
+                    duration: 30000,
+                });
+                console.log(`\n[DEV RESET LINK para '${empresa.responsavelEmail}']:\n${debugLink}\n`);
+            } else {
+                toast({ title: 'E-mail enviado', description: `Link de redefinição enviado para ${empresa.responsavelEmail}.` });
+            }
+        } catch (error: any) {
+            toast({ title: 'Erro inesperado', description: error?.message || 'Falha ao enviar.', variant: 'destructive' });
+        } finally {
+            setIsSendingReset(false);
+        }
+    };
+
+    const handleSalvarSenhaTemporaria = async () => {
+        setErroSenha("");
+        if (novaSenhaTemporaria.length < 8) {
+            setErroSenha("A senha precisa ter no mínimo 8 caracteres.");
+            return;
+        }
+        if (novaSenhaTemporaria !== confirmarSenhaTemporaria) {
+            setErroSenha("As senhas não coincidem.");
+            return;
+        }
+
+        setIsSavingSenha(true);
+        try {
+            await fetchJSON('/api/sistema/empresas/definir-senha-temporaria', {
+                method: 'POST',
+                body: JSON.stringify({
+                    empresaId,
+                    novaSenha: novaSenhaTemporaria,
+                    forcarTrocaSenha
+                })
+            });
+
+            toast({
+                title: "Senha temporária definida",
+                description: "O usuário deverá alterar a senha no próximo login.",
+                action: (
+                    <button className="text-xs underline bg-background/50 p-1 rounded font-mono" onClick={() => navigator.clipboard.writeText(novaSenhaTemporaria)}>
+                        Copiar Senha
+                    </button>
+                ) as any,
+                duration: 20000,
+            });
+            setIsDialogSenhaOpen(false);
+            setNovaSenhaTemporaria("");
+            setConfirmarSenhaTemporaria("");
+            setForcarTrocaSenha(true);
+        } catch (error: any) {
+            setErroSenha(error.message || "Erro ao definir senha temporária.");
+        } finally {
+            setIsSavingSenha(false);
+        }
+    };
+
     const badgeVariant = (status: string) => {
         if (['ATIVO', 'TRIAL_ATIVO'].includes(status)) return 'default';
         if (status === 'SUSPENSO') return 'secondary';
@@ -271,7 +353,7 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                             <DialogTitle className="flex items-center gap-2 text-xl m-0 leading-none">
                                 <Building2 className="h-6 w-6 text-primary flex-shrink-0" />
                                 <span className="truncate">
-                                    {carregando ? 'Carregando detalhes...' : (empresa?.nomeEmpresa || 'Detalhes da Empresa')}
+                                    {carregando ? 'Carregando detalhes...' : (empresa?.nome || 'Detalhes da Empresa')}
                                 </span>
                             </DialogTitle>
                             <DialogDescription className="sr-only">
@@ -322,7 +404,7 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                                             <div className="space-y-4 text-sm bg-card p-4 rounded-lg border shadow-sm">
                                                 <div>
                                                     <p className="text-muted-foreground mb-1 text-xs">Nome Fantasia</p>
-                                                    <p className="font-semibold text-base text-foreground truncate">{empresa.nomeEmpresa}</p>
+                                                    <p className="font-semibold text-base text-foreground truncate">{empresa.nome}</p>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4">
                                                     <div>
@@ -331,7 +413,7 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                                                     </div>
                                                     <div className="overflow-hidden">
                                                         <p className="text-muted-foreground mb-1 flex items-center gap-1 text-xs"><Hash className="h-3 w-3" /> ID do Sistema</p>
-                                                        <p className="font-mono text-[11px] truncate text-muted-foreground p-1 bg-muted rounded inline-block max-w-full" title={empresa.empresaId}>{empresa.empresaId}</p>
+                                                        <p className="font-mono text-[11px] truncate text-muted-foreground p-1 bg-muted rounded inline-block max-w-full" title={empresa.id}>{empresa.id}</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -369,12 +451,12 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                                                     </div>
                                                     <div>
                                                         <p className="text-muted-foreground mb-1 flex items-center gap-1 text-xs"><Banknote className="h-3 w-3" /> Plano</p>
-                                                        <p className="font-bold text-base">{empresa.assinaturaAtual?.planoId || empresa.planoId || "—"}</p>
+                                                        <p className="font-bold text-base">{empresa.planoNome || empresa.planoId || "—"}</p>
                                                     </div>
                                                 </div>
                                                 <div>
                                                     <p className="text-muted-foreground mb-1 text-xs">Licença / Expiração Trial</p>
-                                                    <p className="font-medium text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">{empresa.assinaturaAtual?.diasTrial || 0} dias restantes</p>
+                                                    <p className="font-medium text-emerald-600 bg-emerald-50 inline-block px-2 py-0.5 rounded border border-emerald-100">{empresa.diasTrial || 0} dias restantes</p>
                                                 </div>
 
                                                 <div className="pt-3 mt-1 border-t border-dashed">
@@ -426,12 +508,43 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                                                         <p className="font-medium text-base">{formatDateSafe(empresa.atualizadoEm)}</p>
                                                     </div>
                                                 </div>
-                                                {empresa.assinaturaAtual && (
-                                                    <div className="pt-3 border-t border-dashed">
-                                                        <p className="text-muted-foreground mb-1 flex items-center gap-1 text-xs">Assinatura Mestre Vinculada</p>
-                                                        <p className="font-mono text-[10px] text-muted-foreground truncate">{empresa.assinaturaAtual.id}</p>
-                                                    </div>
-                                                )}
+
+                                            </div>
+                                        </div>
+
+                                        {/* SEÇÃO ACESSO / SEGURANÇA */}
+                                        <div className="space-y-4 md:col-span-2">
+                                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b pb-2 flex items-center gap-1.5"><KeyRound className="h-4 w-4" /> Acesso / Segurança</h4>
+                                            <div className="flex items-center justify-between bg-card p-4 rounded-lg border shadow-sm">
+                                                <div>
+                                                    <p className="text-sm font-medium">Redefinição de Senha</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Envia um link de redefinição para o e-mail do responsável: <strong>{empresa.responsavelEmail || "—"}</strong></p>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={handleEnviarReset}
+                                                    disabled={isSendingReset || !empresa.responsavelEmail}
+                                                    className="shrink-0 ml-4"
+                                                >
+                                                    <KeyRound className="mr-1.5 h-3.5 w-3.5" />
+                                                    {isSendingReset ? 'Enviando...' : 'Enviar redefinição'}
+                                                </Button>
+                                            </div>
+
+                                            <div className="flex items-center justify-between bg-card p-4 rounded-lg border shadow-sm">
+                                                <div>
+                                                    <p className="text-sm font-medium">Definir Senha Temporária</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5">Use apenas em situações de suporte ou primeiro acesso. O usuário Master (<strong title={empresa.responsavelEmail}>{empresa.responsavelNome || "—"}</strong>) será forçado a trocá-la logo após entrar.</p>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => setIsDialogSenhaOpen(true)}
+                                                    className="shrink-0 ml-4 border"
+                                                >
+                                                    Definir senha
+                                                </Button>
                                             </div>
                                         </div>
 
@@ -579,7 +692,7 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                             <AlertCircle className="h-5 w-5" /> Você tem certeza absoluta?
                         </AlertDialogTitle>
                         <AlertDialogDescription className="text-foreground/80">
-                            A remoção (ou inativação lógica) suspende a empresa <strong className="text-foreground">{empresa?.nomeEmpresa}</strong>. Dívidas correntes podem ser arquivadas ou perdidas. Confirme que deseja isolar este locatário e impedir o fluxo financeiro atrelado à conta original.
+                            A remoção (ou inativação lógica) suspende a empresa <strong className="text-foreground">{empresa?.nome}</strong>. Dívidas correntes podem ser arquivadas ou perdidas. Confirme que deseja isolar este locatário e impedir o fluxo financeiro atrelado à conta original.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="mt-4">
@@ -594,6 +707,61 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* MODAL DEFINIR SENHA TEMPORARIA */}
+            <Dialog open={isDialogSenhaOpen} onOpenChange={setIsDialogSenhaOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Definir Senha Temporária</DialogTitle>
+                        <DialogDescription>
+                            Configure uma senha provisória de acesso. O Gestor será obrigado a alterá-la obrigatoriamente no próximo acesso à plataforma.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="novaSenha">Nova Senha Temporária</Label>
+                            <Input
+                                id="novaSenha"
+                                type="text"
+                                value={novaSenhaTemporaria}
+                                onChange={(e) => setNovaSenhaTemporaria(e.target.value)}
+                                placeholder="Mínimo de 8 caracteres alfanuméricos"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="confirmarSenha">Confirmar Senha</Label>
+                            <Input
+                                id="confirmarSenha"
+                                type="text"
+                                value={confirmarSenhaTemporaria}
+                                onChange={(e) => setConfirmarSenhaTemporaria(e.target.value)}
+                                placeholder="Mínimo de 8 caracteres alfanuméricos"
+                            />
+                        </div>
+
+                        <div className="flex items-center space-x-2 pt-2">
+                            <Checkbox
+                                id="forcarTroca"
+                                checked={forcarTrocaSenha}
+                                onCheckedChange={(checked) => setForcarTrocaSenha(checked as boolean)}
+                            />
+                            <Label htmlFor="forcarTroca" className="font-normal cursor-pointer text-sm">
+                                Obrigar troca de senha no próximo login
+                            </Label>
+                        </div>
+
+                        {erroSenha && <p className="text-sm font-medium text-destructive">{erroSenha}</p>}
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t">
+                        <Button variant="ghost" onClick={() => setIsDialogSenhaOpen(false)}>Cancelar</Button>
+                        <Button disabled={isSavingSenha} onClick={handleSalvarSenhaTemporaria}>
+                            {isSavingSenha ? "Salvando..." : "Salvar senha"}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

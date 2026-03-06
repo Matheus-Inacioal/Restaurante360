@@ -21,54 +21,31 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import Link from 'next/link';
-import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where } from 'firebase/firestore';
-import type { TaskInstance, ChecklistInstance } from '@/lib/types';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
-import { serverTimestamp } from 'firebase/firestore';
-import { format } from 'date-fns';
-
-interface EnrichedTask extends TaskInstance {
-  processName?: string;
-}
+import { usePerfil } from '@/hooks/use-perfil';
+import { useTarefas } from '@/hooks/use-tarefas';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function CollaboratorDashboard() {
-  const { firestore } = useFirebase();
-  const { user } = useUser();
+  const { perfilUsuario } = usePerfil();
+  const { tarefas, isCarregando: isLoadingTarefas } = useTarefas();
+
+  // Mock de Check-in (para não criar infra de ponto só no MVP de UI, mantemos no Client State local)
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const { toast } = useToast();
 
-  const todayStr = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // CRITICAL FIX: Added where clauses to secure the query.
-  // This query now correctly filters for the logged-in user and today's date.
-  const checklistsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(
-      collection(firestore, 'checklists'),
-      where('assignedTo', '==', user.uid),
-      where('date', '==', todayStr)
-    );
-  }, [firestore, user, todayStr]);
+  const collaboratorTasks = useMemo(() => {
+    if (!tarefas || !perfilUsuario) return [];
 
-  const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
-
-  const collaboratorTasks: EnrichedTask[] = useMemo(() => {
-    if (!checklists) return [];
-    return checklists
-      .flatMap(c => (c.tasks || []).map(t => ({ ...t, processName: c.processName })))
-      .slice(0, 4);
-  }, [checklists]);
-
+    // Filtra tarefas designadas ao usuário logado E que sejam para hoje
+    return tarefas
+      .filter((t) => t.responsavel === perfilUsuario.uid)
+      .filter((t) => t.origem?.dataReferencia === todayStr || t.prazo?.startsWith(todayStr))
+      .slice(0, 5); // MVP limite
+  }, [tarefas, perfilUsuario, todayStr]);
 
   const handleCheckIn = () => {
-    if (!user || !firestore) return;
-    addDocumentNonBlocking(collection(firestore, 'checkIns'), {
-      userId: user.uid,
-      date: new Date().toISOString().split('T')[0],
-      shift: 'Manhã', // This could be dynamic
-      createdAt: serverTimestamp(),
-    });
     setIsCheckedIn(true);
     toast({
       title: 'Check-in realizado!',
@@ -78,7 +55,9 @@ export function CollaboratorDashboard() {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <Card className="lg:col-span-1">
+
+      {/* CARD 1: CHECK IN */}
+      <Card className="lg:col-span-1 border-primary/20 shadow-sm">
         <CardHeader>
           <CardTitle className="font-headline text-2xl">Bem-vindo(a)!</CardTitle>
           <CardDescription>Pronto para começar o seu turno?</CardDescription>
@@ -97,22 +76,23 @@ export function CollaboratorDashboard() {
           )}
         </CardContent>
         <CardFooter>
-          <Button className="w-full" onClick={handleCheckIn} disabled={isCheckedIn || !user}>
+          <Button className="w-full" onClick={handleCheckIn} disabled={isCheckedIn || !perfilUsuario}>
             <LogIn className="mr-2 h-4 w-4" />
             {isCheckedIn ? 'Check-in Feito' : 'Fazer Check-in'}
           </Button>
         </CardFooter>
       </Card>
 
-      <Card className="lg:col-span-2">
+      {/* CARD 2: TAREFAS */}
+      <Card className="lg:col-span-2 shadow-sm border-0 bg-background/50">
         <CardHeader>
           <div className='flex justify-between items-center'>
             <div>
               <CardTitle>Minhas Tarefas de Hoje</CardTitle>
               <CardDescription>Aqui estão as suas tarefas pendentes para o turno.</CardDescription>
             </div>
-            <Button asChild variant="outline">
-              <Link href="/operacional">Ver Todas</Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/operacional/tarefas">Ver Todas</Link>
             </Button>
           </div>
         </CardHeader>
@@ -120,44 +100,54 @@ export function CollaboratorDashboard() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className='w-[50px]'></TableHead>
+                <TableHead className='w-[50px]'>Status</TableHead>
                 <TableHead>Tarefa</TableHead>
-                <TableHead className="text-right">Status</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {isLoadingChecklists && (
+              {isLoadingTarefas && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center">Carregando tarefas...</TableCell>
+                  <TableCell colSpan={3} className="text-center h-24">
+                    <div className="flex flex-col gap-2 p-2">
+                      <Skeleton className="h-8 w-full" />
+                      <Skeleton className="h-8 w-full" />
+                      <Skeleton className="h-8 w-full" />
+                    </div>
+                  </TableCell>
                 </TableRow>
               )}
-              {!isLoadingChecklists && collaboratorTasks.length === 0 && (
+              {!isLoadingTarefas && collaboratorTasks.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center h-24">Você não tem tarefas para hoje.</TableCell>
+                  <TableCell colSpan={3} className="text-center h-24 text-muted-foreground border-dashed border-2 m-4 rounded-xl">
+                    Você não tem tarefas atribuídas para hoje. 🎉
+                  </TableCell>
                 </TableRow>
               )}
-              {!isLoadingChecklists && collaboratorTasks.map((task) => (
+              {!isLoadingTarefas && collaboratorTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell>
-                    {task.status === 'done' ? (
+                    {task.status === 'concluida' ? (
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    ) : task.status === 'atrasada' ? (
+                      <Circle className="h-5 w-5 text-red-500 fill-red-100 dark:fill-red-900/30" />
                     ) : (
                       <Circle className="h-5 w-5 text-muted-foreground" />
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{task.title}</div>
-                    <div className="text-sm text-muted-foreground hidden md:inline">{task.processName}</div>
+                    <div className="font-medium text-sm">{task.titulo}</div>
+                    <div className="text-xs text-muted-foreground line-clamp-1">{task.descricao || 'Sem descrição.'}</div>
                   </TableCell>
                   <TableCell className="text-right">
-                    {task.status === 'done' && task.completedAt ? (
-                      <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>{new Date(task.completedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    {task.status === 'concluida' && task.atualizadoEm ? (
+                      <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        <span>{new Date(task.atualizadoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     ) : (
-                      <Button asChild variant="ghost" size="sm">
-                        <Link href="/operacional">Ver</Link>
+                      <Button asChild variant="secondary" size="sm" className="h-7 text-xs">
+                        <Link href="/operacional/tarefas">Executar</Link>
                       </Button>
                     )}
                   </TableCell>
@@ -167,6 +157,7 @@ export function CollaboratorDashboard() {
           </Table>
         </CardContent>
       </Card>
+
     </div>
   );
 }

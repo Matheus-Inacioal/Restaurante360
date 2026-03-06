@@ -4,8 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Clock, CheckCircle2, ChevronRight, FileText, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { DrawerDetalhesTarefa } from "@/components/tarefas/drawer-detalhes-tarefa";
-import { useTarefas } from "@/hooks/use-tarefas";
 
 export type PriorityItem = {
     id: string;
@@ -16,12 +14,7 @@ export type PriorityItem = {
     status: 'atrasado' | 'hoje' | 'ok';
 };
 
-export function PrioritiesList({ items }: { items: PriorityItem[] }) {
-    const { tarefas } = useTarefas();
-    const [tarefaIdSelecionada, setTarefaIdSelecionada] = useState<string | null>(null);
-
-    const tarefaSelecionada = tarefas.find(t => t.id === tarefaIdSelecionada) || null;
-
+export function PrioritiesList({ items, emptyMessage = "Nada para mostrar.", onItemClick }: { items: PriorityItem[], emptyMessage?: string, onItemClick?: (id: string) => void }) {
     if (!items || items.length === 0) {
         return (
             <Card className="h-full">
@@ -35,14 +28,11 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                     </div>
                     <h3 className="font-medium text-lg mb-1">Tudo em dia! 🎉</h3>
                     <p className="text-muted-foreground text-sm mb-4">
-                        Nenhuma pendência ou rotina crítica no momento.
+                        {emptyMessage}
                     </p>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" asChild className="hidden sm:flex text-xs h-7">
-                            <Link href="/empresa/tarefas">Ver Todas</Link>
-                        </Button>
-                        <Button variant="outline" size="sm" asChild>
-                            <Link href="/empresa/rotinas">Criar rotina</Link>
+                    <div className="flex gap-2 justify-center">
+                        <Button variant="outline" size="sm" asChild className="text-xs h-7">
+                            <Link href="/empresa/tarefas">Ir para Tarefas</Link>
                         </Button>
                     </div>
                 </CardContent>
@@ -86,7 +76,7 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                                     size="icon"
                                     className="h-8 w-8 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-100 dark:hover:bg-yellow-900/30"
                                     title="Ver detalhes"
-                                    onClick={() => setTarefaIdSelecionada(item.id)}
+                                    onClick={() => onItemClick && onItemClick(item.id)}
                                 >
                                     <ChevronRight className="h-4 w-4" />
                                 </Button>
@@ -95,12 +85,6 @@ export function PrioritiesList({ items }: { items: PriorityItem[] }) {
                     ))}
                 </div>
             </CardContent>
-
-            <DrawerDetalhesTarefa
-                aberta={!!tarefaIdSelecionada}
-                tarefaSelecionada={tarefaSelecionada}
-                aoFechar={() => setTarefaIdSelecionada(null)}
-            />
         </Card>
     );
 }

@@ -1,15 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { useFirebase, useCollection, useUser } from '@/firebase';
-import { Search, Plus, Play, Calendar as CalendarIcon } from 'lucide-react';
-import { collection, query, where } from 'firebase/firestore';
-import type { ChecklistInstance, User } from '@/lib/types';
+import { Search, Plus, Play, Calendar as CalendarIcon, AlertCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+import { useTarefas } from '@/hooks/use-tarefas';
+import { useUsuarios } from '@/hooks/use-usuarios';
 
 // Import dos novos componentes modulares
 import { DashboardCards } from './dashboard-cards';
@@ -18,55 +20,122 @@ import { ActivityFeed, type FeedItem } from './activity-feed';
 import { DashboardCharts, type ChartDataPoint } from './dashboard-charts';
 
 export function ManagerDashboard() {
-  const { firestore } = useFirebase();
-  const { user, isUserLoading } = useUser();
   const [period, setPeriod] = useState('hoje');
+
+  const { tarefas, isCarregando: carregandoTarefas, erro: erroTarefas } = useTarefas();
+  const { usuarios, isCarregando: carregandoUsuarios, erro: erroUsuarios } = useUsuarios();
+
+  const isCarregando = carregandoTarefas || carregandoUsuarios;
+  const erro = erroTarefas || erroUsuarios;
 
   // Tratamento da data contextual
   const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' };
   const todayDateString = new Date().toLocaleDateString('pt-BR', dateOptions);
   const formattedDate = todayDateString.charAt(0).toUpperCase() + todayDateString.slice(1);
 
-  // --- Opcional: Futura integração real de queries abaixo ---
-  // const today = new Date().toISOString().split('T')[0];
-  // const checklistsQuery = useMemoFirebase(() => { ... });
-  // const { data: checklistsDoDiaData } = useCollection<ChecklistInstance>(checklistsQuery);
-  // -----------------------------------------------------------
+  if (isCarregando) {
+    return (
+      <div className="flex flex-col space-y-6">
+        <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <Skeleton className="h-10 w-64 mb-2" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <Skeleton className="h-10 w-full sm:w-64" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+          <Skeleton className="col-span-1 lg:col-span-4 h-96 w-full" />
+          <div className="col-span-1 lg:col-span-3 flex flex-col gap-6">
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (erro) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Erro ao carregar dashboard</AlertTitle>
+        <AlertDescription>
+          {erro}. Tente recarregar a página.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   // ==========================================
-  // MOCKS DE DADOS UI - PARA DEMONSTRAÇÃO DO LAYOUT
+  // PROCESSAMENTO DE DADOS REAIS
   // ==========================================
+  const todayStr = new Date().toISOString().split('T')[0];
 
-  // Dashboard Metrics
-  const metrics = {
-    pendingCritical: 2,
-    executionTodayCompleted: 14,
-    executionTodayTotal: 25,
-    activeTeam: 8
-  };
+  const tarefasDoDia = tarefas.filter(t => t.origem?.dataReferencia === todayStr || t.prazo?.startsWith(todayStr));
+  const executionTodayTotal = tarefasDoDia.length;
+  const executionTodayCompleted = tarefasDoDia.filter(t => t.status === 'concluida').length;
+  const pendingCritical = tarefas.filter(t => t.prioridade === 'Alta' && t.status !== 'concluida').length;
+  const activeTeam = usuarios.filter(u => u.status === 'ativo').length;
 
-  // Priorities (Atrasadas primeiro, depois hoje)
-  const prioritiesMock: PriorityItem[] = [
-    { id: '1', type: 'rotina', title: 'Abertura de Caixa', assignee: 'Maria Souza', deadline: '09:00', status: 'atrasado' },
-    { id: '2', type: 'tarefa', title: 'Reposição Limpeza', assignee: 'João Silva', deadline: '10:30', status: 'atrasado' },
-    { id: '3', type: 'processo', title: 'Inspeção Sanitária', assignee: 'Carlos Gerente', deadline: '14:00', status: 'hoje' },
-    { id: '4', type: 'rotina', title: 'Troca de Turno', assignee: 'Equipe Tarde', deadline: '15:00', status: 'hoje' },
-    { id: '5', type: 'tarefa', title: 'Auditoria de Estoque', assignee: 'Ana Clara', deadline: '18:00', status: 'hoje' },
-  ];
+  const prioritiesList: PriorityItem[] = tarefas
+    .filter(t => t.status === 'pendente' || t.status === 'em_progresso' || t.status === 'atrasada')
+    .sort((a, b) => {
+      // Tarefas sem prazo vêm por último
+      if (!a.prazo) return 1;
+      if (!b.prazo) return -1;
+      return new Date(a.prazo).getTime() - new Date(b.prazo).getTime();
+    })
+    .slice(0, 5)
+    .map(t => ({
+      id: t.id,
+      type: t.origem?.tipo || 'tarefa',
+      title: t.titulo,
+      assignee: usuarios.find(u => u.id === t.responsavel)?.nome || 'Não atribuído',
+      deadline: t.prazo ? new Date(t.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Sem prazo',
+      status: t.prazo && new Date(t.prazo) < new Date() ? 'atrasado' : 'hoje'
+    }));
 
-  // Feed (Recentes)
-  const feedMock: FeedItem[] = [
-    { id: 'f1', user: 'Maria Souza', initials: 'MS', action: 'concluiu a rotina', target: 'Abertura de Caixa (Ontem)', time: 'há 10 min' },
-    { id: 'f2', user: 'João Silva', initials: 'JS', action: 'anexou uma foto em', target: 'Manutenção Freezer', time: 'há 45 min' },
-    { id: 'f3', user: 'Carlos Gerente', initials: 'CG', action: 'criou o processo', target: 'Treinamento Novatos', time: 'há 1 hora' },
-    { id: 'f4', user: 'Ana Clara', initials: 'AC', action: 'concluiu a tarefa', target: 'Reposição Bebidas', time: 'há 2 horas' },
-  ];
+  const feedList: FeedItem[] = tarefas
+    .filter(t => t.status === 'concluida')
+    .sort((a, b) => new Date(b.atualizadoEm || b.criadoEm).getTime() - new Date(a.atualizadoEm || a.criadoEm).getTime())
+    .slice(0, 5)
+    .map(t => {
+      const u = usuarios.find(usr => usr.id === t.responsavel);
+      const nome = u?.nome || 'Sistema';
+      const initials = nome.substring(0, 2).toUpperCase();
 
-  // Chart
-  const chartMock: ChartDataPoint[] = [
-    { name: 'Concluído', value: 45, color: 'hsl(var(--primary))' },
-    { name: 'Em Progresso', value: 30, color: 'hsl(var(--accent))' },
-    { name: 'Pendente', value: 25, color: 'hsl(var(--muted-foreground))' },
+      let tempo = 'Hoje';
+      if (t.atualizadoEm) {
+        const diffEmMinutos = Math.floor((new Date().getTime() - new Date(t.atualizadoEm).getTime()) / 60000);
+        if (diffEmMinutos < 60) {
+          tempo = `há ${diffEmMinutos} min`;
+        } else if (diffEmMinutos < 1440) {
+          tempo = `há ${Math.floor(diffEmMinutos / 60)}h`;
+        } else {
+          tempo = new Date(t.atualizadoEm).toLocaleDateString('pt-BR');
+        }
+      }
+
+      return {
+        id: t.id,
+        user: nome,
+        initials,
+        action: 'concluiu algo',
+        target: t.titulo,
+        time: tempo
+      };
+    });
+
+  const chartData: ChartDataPoint[] = [
+    { name: 'Concluído', value: tarefas.filter(t => t.status === 'concluida').length, color: 'hsl(var(--primary))' },
+    { name: 'Em Progresso', value: tarefas.filter(t => t.status === 'em_progresso').length, color: 'hsl(var(--accent))' },
+    { name: 'Pendente', value: tarefas.filter(t => t.status === 'pendente' || t.status === 'atrasada').length, color: 'hsl(var(--muted-foreground))' },
   ];
 
   return (
@@ -127,10 +196,10 @@ export function ManagerDashboard() {
 
       {/* 2. CARDS PRINCIPAIS */}
       <DashboardCards
-        pendingCritical={metrics.pendingCritical}
-        executionTodayCompleted={metrics.executionTodayCompleted}
-        executionTodayTotal={metrics.executionTodayTotal}
-        activeTeam={metrics.activeTeam}
+        pendingCritical={pendingCritical}
+        executionTodayCompleted={executionTodayCompleted}
+        executionTodayTotal={executionTodayTotal}
+        activeTeam={activeTeam}
       />
 
       {/* 3. ÁREA CENTRAL: Prioridades e Feed + Grafícos */}
@@ -138,18 +207,24 @@ export function ManagerDashboard() {
 
         {/* Coluna Esquerda: Master (Prioridades) */}
         <div className="col-span-1 lg:col-span-4 flex flex-col gap-6">
-          <PrioritiesList items={prioritiesMock} />
+          <PrioritiesList items={prioritiesList} emptyMessage="Parabéns! Nenhuma prioridade atrasada ou pendente para hoje." />
         </div>
 
         {/* Coluna Direita (Atividade e Gráfico Reduzido) */}
         <div className="col-span-1 lg:col-span-3 flex flex-col gap-6">
 
           <div className="h-1/2 min-h-[300px]">
-            <ActivityFeed items={feedMock} />
+            <ActivityFeed items={feedList} />
           </div>
 
           <div className="h-1/2 min-h-[300px]">
-            <DashboardCharts data={chartMock} />
+            {chartData.every(d => d.value === 0) ? (
+              <div className="rounded-xl border bg-card text-card-foreground shadow h-full flex items-center justify-center p-6 text-center">
+                <p className="text-muted-foreground">Não há dados suficientes para gerar o gráfico.</p>
+              </div>
+            ) : (
+              <DashboardCharts data={chartData} />
+            )}
           </div>
 
         </div>

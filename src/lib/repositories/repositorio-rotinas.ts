@@ -1,3 +1,4 @@
+import { fetchJSON } from "../http/fetch-json";
 import type { Rotina, GeracaoRotinaDiaria } from "../types/rotinas";
 
 export interface RepositorioRotinas {
@@ -14,132 +15,85 @@ export interface RepositorioRotinas {
     obterHistoricoRecente(rotinaId: string, empresaId: string, limite?: number): Promise<GeracaoRotinaDiaria[]>;
 }
 
-const LOCAL_STORAGE_KEY_ROTINAS = "r360_rotinas";
-const LOCAL_STORAGE_KEY_GERACOES = "r360_geracoes_rotinas";
-
-export class RepositorioRotinasLocal implements RepositorioRotinas {
-    private obterRotinasDoStorage(): Rotina[] {
-        if (typeof window === "undefined") return [];
-        const data = localStorage.getItem(LOCAL_STORAGE_KEY_ROTINAS);
-        const rotinas: Rotina[] = data ? JSON.parse(data) : [];
-        return rotinas.map(r => ({ ...r, frequencia: r.frequencia || "diaria" }));
-    }
-
-    private salvarRotinasNoStorage(rotinas: Rotina[]): void {
-        if (typeof window !== "undefined") {
-            localStorage.setItem(LOCAL_STORAGE_KEY_ROTINAS, JSON.stringify(rotinas));
-        }
-    }
-
-    private obterGeracoesDoStorage(): GeracaoRotinaDiaria[] {
-        if (typeof window === "undefined") return [];
-        const data = localStorage.getItem(LOCAL_STORAGE_KEY_GERACOES);
-        return data ? JSON.parse(data) : [];
-    }
-
-    private salvarGeracoesNoStorage(geracoes: GeracaoRotinaDiaria[]): void {
-        if (typeof window !== "undefined") {
-            localStorage.setItem(LOCAL_STORAGE_KEY_GERACOES, JSON.stringify(geracoes));
-        }
-    }
-
+export class RepositorioRotinasRest implements RepositorioRotinas {
     async obterTodas(empresaId: string): Promise<Rotina[]> {
-        const rotinas = this.obterRotinasDoStorage();
-        return rotinas.filter(r => r.empresaId === empresaId);
+        const res = await fetchJSON<Rotina[]>(`/api/empresa/rotinas?empresaId=${empresaId}`);
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async obterAtivas(empresaId: string): Promise<Rotina[]> {
-        const rotinas = this.obterRotinasDoStorage();
-        return rotinas.filter(r => r.empresaId === empresaId && r.ativa);
+        const rotinas = await this.obterTodas(empresaId);
+        return rotinas.filter(r => r.ativa);
     }
 
     async obterPorId(id: string, empresaId: string): Promise<Rotina | null> {
-        const rotinas = this.obterRotinasDoStorage();
-        return rotinas.find((r) => r.id === id && r.empresaId === empresaId) || null;
+        const res = await fetchJSON<Rotina>(`/api/empresa/rotinas/${id}?empresaId=${empresaId}`);
+        if (!res.ok) return null;
+        return res.data;
     }
 
     async criar(dadosRotina: Omit<Rotina, "id" | "criadoEm" | "atualizadoEm">): Promise<Rotina> {
-        const rotinas = this.obterRotinasDoStorage();
-        const agora = new Date().toISOString();
-
         if (!dadosRotina.empresaId || !dadosRotina.criadoPor) {
             throw new Error("Falha de Governança: Toda rotina exige empresaId e id do criador.");
         }
-
-        const novaRotina: Rotina = {
-            ...dadosRotina,
-            id: crypto.randomUUID(),
-            criadoEm: agora,
-            atualizadoEm: agora,
-        };
-
-        rotinas.push(novaRotina);
-        this.salvarRotinasNoStorage(rotinas);
-        return novaRotina;
+        const res = await fetchJSON<Rotina>(`/api/empresa/rotinas`, {
+            method: 'POST',
+            body: JSON.stringify(dadosRotina)
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async atualizar(id: string, empresaId: string, atualizacoes: Partial<Rotina>): Promise<Rotina> {
-        const rotinas = this.obterRotinasDoStorage();
-        const index = rotinas.findIndex((r) => r.id === id && r.empresaId === empresaId);
-
-        if (index === -1) {
-            throw new Error(`Rotina com ID ${id} não encontrada ou sem permissão de acesso.`);
-        }
-
-        const rotinaAtualizada: Rotina = {
-            ...rotinas[index],
-            ...atualizacoes,
-            atualizadoEm: new Date().toISOString(),
-        };
-
-        rotinas[index] = rotinaAtualizada;
-        this.salvarRotinasNoStorage(rotinas);
-        return rotinaAtualizada;
+        const res = await fetchJSON<Rotina>(`/api/empresa/rotinas/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ empresaId, atualizacoes })
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async excluir(id: string, empresaId: string): Promise<void> {
-        const rotinas = this.obterRotinasDoStorage();
-        const indice = rotinas.findIndex((r) => r.id === id && r.empresaId === empresaId);
-
-        if (indice === -1) {
-            throw new Error("Permissão negada ou rotina inexistente.");
-        }
-
-        const rotinasFiltradas = rotinas.filter((r) => r.id !== id);
-        this.salvarRotinasNoStorage(rotinasFiltradas);
-        // Não apagar o histórico de gerações por motivos de auditoria
+        const res = await fetchJSON<{ success: boolean }>(`/api/empresa/rotinas/${id}?empresaId=${empresaId}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error(res.message);
     }
 
+    // -- Histórico de Geração
     async verificarGeracaoExistente(rotinaId: string, dataReferencia: string, empresaId: string): Promise<boolean> {
-        const geracoes = this.obterGeracoesDoStorage();
-        return geracoes.some(g => g.rotinaId === rotinaId && g.dataReferencia === dataReferencia && g.empresaId === empresaId);
+        // Aproveitamos o listar passando parametro genérico, mas filtrando no client p manter simplicidade,
+        // ou criar endpoint customizado depois. Por enquanto pega todas as geracoes dessa rotina.
+        try {
+            const res = await fetchJSON<GeracaoRotinaDiaria[]>(`/api/empresa/geracoes?empresaId=${empresaId}`);
+            if (!res.ok) return false;
+            return res.data.some(g => g.rotinaId === rotinaId && g.dataReferencia === dataReferencia);
+        } catch {
+            return false;
+        }
     }
 
     async registrarGeracao(dadosGeracao: Omit<GeracaoRotinaDiaria, "id" | "criadoEm">): Promise<GeracaoRotinaDiaria> {
-        const geracoes = this.obterGeracoesDoStorage();
-
         if (!dadosGeracao.empresaId || !dadosGeracao.rotinaId) {
-            throw new Error("Falha de Governança: Toda geração de rotina exige empresaId e rotinaId.");
+            throw new Error("Falha de Governança: Toda geração exige empresaId e rotinaId.");
         }
-
-        const novaGeracao: GeracaoRotinaDiaria = {
-            ...dadosGeracao,
-            id: crypto.randomUUID(),
-            criadoEm: new Date().toISOString(),
-        };
-
-        geracoes.push(novaGeracao);
-        this.salvarGeracoesNoStorage(geracoes);
-        return novaGeracao;
+        const res = await fetchJSON<GeracaoRotinaDiaria>(`/api/empresa/geracoes`, {
+            method: 'POST',
+            body: JSON.stringify(dadosGeracao)
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async obterHistoricoRecente(rotinaId: string, empresaId: string, limite: number = 7): Promise<GeracaoRotinaDiaria[]> {
-        const geracoes = this.obterGeracoesDoStorage();
-        return geracoes
-            .filter(g => g.rotinaId === rotinaId && g.empresaId === empresaId)
+        const res = await fetchJSON<GeracaoRotinaDiaria[]>(`/api/empresa/geracoes?empresaId=${empresaId}`);
+        if (!res.ok) throw new Error(res.message);
+        return res.data
+            .filter(g => g.rotinaId === rotinaId)
             .sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime())
             .slice(0, limite);
     }
 }
 
-export const repositorioRotinas = new RepositorioRotinasLocal();
+export const repositorioRotinas = new RepositorioRotinasRest();

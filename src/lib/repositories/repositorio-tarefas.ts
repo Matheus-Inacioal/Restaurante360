@@ -1,4 +1,5 @@
-import type { Tarefa, StatusTarefa } from "../types/tarefas";
+import { fetchJSON } from "../http/fetch-json";
+import type { Tarefa } from "../types/tarefas";
 
 export interface RepositorioTarefas {
     obterTodas(empresaId: string): Promise<Tarefa[]>;
@@ -8,83 +9,46 @@ export interface RepositorioTarefas {
     excluir(id: string, empresaId: string): Promise<void>;
 }
 
-const LOCAL_STORAGE_KEY = "r360_tarefas";
-
-export class RepositorioTarefasLocal implements RepositorioTarefas {
-    private obterTarefasDoStorage(): Tarefa[] {
-        if (typeof window === "undefined") return [];
-        const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
-    }
-
-    private salvarTarefasNoStorage(tarefas: Tarefa[]): void {
-        if (typeof window !== "undefined") {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(tarefas));
-        }
-    }
-
+export class RepositorioTarefasRest implements RepositorioTarefas {
     async obterTodas(empresaId: string): Promise<Tarefa[]> {
-        const tarefas = this.obterTarefasDoStorage();
-        return tarefas.filter(t => t.empresaId === empresaId);
+        const res = await fetchJSON<Tarefa[]>(`/api/empresa/tarefas?empresaId=${empresaId}`);
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async obterPorId(id: string, empresaId: string): Promise<Tarefa | null> {
-        const tarefas = this.obterTarefasDoStorage();
-        return tarefas.find((t) => t.id === id && t.empresaId === empresaId) || null;
+        const res = await fetchJSON<Tarefa>(`/api/empresa/tarefas/${id}?empresaId=${empresaId}`);
+        if (!res.ok) return null;
+        return res.data;
     }
 
     async criar(dadosTarefa: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm">): Promise<Tarefa> {
-        const tarefas = this.obterTarefasDoStorage();
-        const agora = new Date().toISOString();
-
-        // Garantia de segurança (Anti-bypass)
         if (!dadosTarefa.empresaId || !dadosTarefa.criadoPor) {
             throw new Error("Falha de Governança: Toda tarefa exige empresaId e id do criador.");
         }
-
-        const novaTarefa: Tarefa = {
-            ...dadosTarefa,
-            id: crypto.randomUUID(),
-            criadoEm: agora,
-            atualizadoEm: agora,
-        };
-
-        tarefas.push(novaTarefa);
-        this.salvarTarefasNoStorage(tarefas);
-        return novaTarefa;
+        const res = await fetchJSON<Tarefa>(`/api/empresa/tarefas`, {
+            method: 'POST',
+            body: JSON.stringify(dadosTarefa)
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async atualizar(id: string, empresaId: string, atualizacoes: Partial<Tarefa>): Promise<Tarefa> {
-        const tarefas = this.obterTarefasDoStorage();
-        const index = tarefas.findIndex((t) => t.id === id && t.empresaId === empresaId);
-
-        if (index === -1) {
-            throw new Error(`Tarefa com ID ${id} não encontrada ou sem permissão de acesso.`);
-        }
-
-        const tarefaAtualizada: Tarefa = {
-            ...tarefas[index],
-            ...atualizacoes,
-            atualizadoEm: new Date().toISOString(),
-        };
-
-        tarefas[index] = tarefaAtualizada;
-        this.salvarTarefasNoStorage(tarefas);
-        return tarefaAtualizada;
+        const res = await fetchJSON<Tarefa>(`/api/empresa/tarefas/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ empresaId, atualizacoes })
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 
     async excluir(id: string, empresaId: string): Promise<void> {
-        const tarefas = this.obterTarefasDoStorage();
-        const indice = tarefas.findIndex((t) => t.id === id && t.empresaId === empresaId);
-
-        if (indice === -1) {
-            throw new Error("Permissão negada ou tarefa inexistente.");
-        }
-
-        const tarefasFiltradas = tarefas.filter((t) => t.id !== id);
-        this.salvarTarefasNoStorage(tarefasFiltradas);
+        const res = await fetchJSON<{ success: boolean }>(`/api/empresa/tarefas/${id}?empresaId=${empresaId}`, {
+            method: 'DELETE'
+        });
+        if (!res.ok) throw new Error(res.message);
     }
 }
 
-// Export da Instância singleton Local
-export const repositorioTarefas = new RepositorioTarefasLocal();
+export const repositorioTarefas = new RepositorioTarefasRest();

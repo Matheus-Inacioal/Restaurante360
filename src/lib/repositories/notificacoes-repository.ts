@@ -1,88 +1,44 @@
+import { fetchJSON } from '../http/fetch-json';
 import { Notificacao } from '../types/notificacoes';
-import { v4 as uuidv4 } from 'uuid';
-
-const STORAGE_KEY = '@Restaurante360:notificacoes';
-
-// Dados iniciais Mock para apresentar o valor do produto
-const mockNotificacoesIniciais: Notificacao[] = [
-    {
-        id: uuidv4(),
-        titulo: 'Tarefa Atrasada',
-        descricao: 'A tarefa "Limpeza da Coifa" passou do prazo.',
-        tipo: 'tarefa_atrasada',
-        lida: false,
-        criadoEm: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 min atrás
-        origem: 'tarefas',
-    },
-    {
-        id: uuidv4(),
-        titulo: 'Nova Tarefa Atribuída',
-        descricao: 'Você foi designado para "Conferir Estoque Diário".',
-        tipo: 'tarefa_atribuida',
-        lida: false,
-        criadoEm: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 horas atrás
-        origem: 'tarefas',
-    },
-    {
-        id: uuidv4(),
-        titulo: 'Baixa Aderência de Rotina',
-        descricao: 'A rotina de "Fechamento de Caixa" não foi preenchida ontem.',
-        tipo: 'rotina_alerta',
-        lida: true,
-        criadoEm: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 dia atrás
-        origem: 'rotinas',
-    },
-];
 
 export const notificacoesRepository = {
-    obterTodas(): Notificacao[] {
-        if (typeof window === 'undefined') return mockNotificacoesIniciais;
-
-        const registradasLocal = localStorage.getItem(STORAGE_KEY);
-        if (!registradasLocal) {
-            this.salvarTodas(mockNotificacoesIniciais);
-            return mockNotificacoesIniciais;
-        }
-
-        try {
-            return JSON.parse(registradasLocal);
-        } catch {
-            return mockNotificacoesIniciais;
-        }
+    async obterTodas(empresaId: string): Promise<Notificacao[]> {
+        const res = await fetchJSON<Notificacao[]>(`/api/empresa/notificacoes?empresaId=${empresaId}`);
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     },
 
-    salvarTodas(todas: Notificacao[]): void {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(todas));
-        }
+    async adicionar(empresaId: string, nova: Omit<Notificacao, 'id' | 'criadoEm' | 'empresaId'>): Promise<Notificacao> {
+        const payload = { ...nova, empresaId, lida: false };
+        const res = await fetchJSON<Notificacao>(`/api/empresa/notificacoes`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     },
 
-    adicionar(nova: Omit<Notificacao, 'id' | 'criadoEm'>): Notificacao {
-        const atual = this.obterTodas();
-        const registro: Notificacao = {
-            ...nova,
-            id: uuidv4(),
-            criadoEm: new Date().toISOString(),
-            lida: false
-        };
-        this.salvarTodas([registro, ...atual]);
-        return registro;
+    async marcarComoLida(id: string, empresaId: string): Promise<void> {
+        await fetchJSON(`/api/empresa/notificacoes/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ empresaId, lida: true })
+        });
     },
 
-    marcarComoLida(id: string): void {
-        const atual = this.obterTodas();
-        const atualizado = atual.map(n => n.id === id ? { ...n, lida: true } : n);
-        this.salvarTodas(atualizado);
+    async marcarTodasComoLidas(empresaId: string): Promise<void> {
+        const todas = await this.obterTodas(empresaId);
+        const naoLidas = todas.filter(n => !n.lida);
+        await Promise.all(naoLidas.map(n =>
+            fetchJSON(`/api/empresa/notificacoes/${n.id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ empresaId, lida: true })
+            })
+        ));
     },
 
-    marcarTodasComoLidas(): void {
-        const atual = this.obterTodas();
-        const atualizadas = atual.map(n => ({ ...n, lida: true }));
-        this.salvarTodas(atualizadas);
-    },
-
-    excluir(id: string): void {
-        const atual = this.obterTodas();
-        this.salvarTodas(atual.filter(n => n.id !== id));
+    async excluir(id: string, empresaId: string): Promise<void> {
+        await fetchJSON(`/api/empresa/notificacoes/${id}?empresaId=${empresaId}`, {
+            method: 'DELETE'
+        });
     }
 };

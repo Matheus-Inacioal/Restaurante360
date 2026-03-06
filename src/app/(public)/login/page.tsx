@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { repositorioUsuarios } from "@/lib/repositories/repositorio-usuarios";
 import { calcularRotaInicial } from "@/lib/redirecionamento";
+import { DialogEsqueciSenha } from "@/components/auth/DialogEsqueciSenha";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -18,6 +19,7 @@ export default function LoginPage() {
 
     const [credenciais, setCredenciais] = useState({ email: "", senha: "" });
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -55,6 +57,12 @@ export default function LoginPage() {
                 await logout();
                 toast({ title: "Acesso Negado", description: "Usuário desativado.", variant: "destructive" });
                 setIsSubmitting(false);
+                return;
+            }
+
+            if ((perfil as any).mustResetPassword === true) {
+                console.info("LOGIN_SUCCESS: Usuário forçado a redefinir a senha provisória.");
+                router.replace("/login/alterar-senha");
                 return;
             }
 
@@ -108,6 +116,14 @@ export default function LoginPage() {
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="password">Senha</Label>
+                                <button
+                                    type="button"
+                                    className="text-sm text-primary hover:underline"
+                                    onClick={() => setIsForgotPasswordOpen(true)}
+                                    disabled={isSubmitting}
+                                >
+                                    Esqueceu sua senha?
+                                </button>
                             </div>
                             <Input
                                 id="password"
@@ -138,6 +154,12 @@ export default function LoginPage() {
                     </CardFooter>
                 </form>
             </Card>
+
+            <DialogEsqueciSenha
+                open={isForgotPasswordOpen}
+                onOpenChange={setIsForgotPasswordOpen}
+                emailInicial={credenciais.email}
+            />
         </div>
     );
 }

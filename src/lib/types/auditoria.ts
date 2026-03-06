@@ -7,7 +7,10 @@ export type TipoEventoAuditoria =
     | 'ASSINATURA_CRIADA'
     | 'USUARIO_CRIADO'
     | 'PROCESSO_MODIFICADO'
-    | 'ACESSO_SISTEMA';
+    | 'ACESSO_SISTEMA'
+    | 'SISTEMA_ENVIAR_RESET_SENHA'
+    | 'SISTEMA_ENVIAR_CONVITE_PRIMEIRO_ACESSO'
+    | 'PUBLICO_ENVIAR_RESET';
 
 export interface LogAuditoria {
     id: string;

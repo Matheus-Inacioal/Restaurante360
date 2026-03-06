@@ -40,6 +40,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import {
     Table,
@@ -53,32 +54,45 @@ import { EmpresaAtualizada } from '@/lib/types/financeiro';
 import { useFirebase } from '@/firebase/provider';
 import { repositorioEmpresasFirestore } from '@/lib/repositories/repositorio-empresas-firestore';
 
-// 1. DADOS MOCKADOS
-const mockMétricas = {
-    empresasAtivas: 12,
-    usuariosAtivos7d: 184,
-    assinaturasEmDia: 10,
-    pendencias: 2,
-};
-
-const mockEmpresasIniciais: EmpresaAtualizada[] = [];
-
 export default function PortalSistemaDashboard() {
     const { toast } = useToast();
-    const { firestore } = useFirebase();
 
     const [empresas, setEmpresas] = useState<EmpresaAtualizada[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [metricas, setMetricas] = useState({
+        empresasAtivas: 0,
+        usuariosAtivos7d: 0,
+        assinaturasEmDia: 0,
+        pendencias: 0,
+    });
 
     const carregaLista = async () => {
-        if (!firestore) return;
         setIsLoading(true);
         try {
-            const results = await repositorioEmpresasFirestore.listarTodas(firestore);
-            // sort latest first
-            setEmpresas(results.sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime()));
-        } catch (err) {
-            console.error("Erro ao listar", err);
+            const [resResumo, resEmpresas] = await Promise.all([
+                fetchJSON<any>('/api/sistema/dashboard/resumo'),
+                fetchJSON<any>('/api/sistema/empresas?limit=10')
+            ]);
+
+            if (resResumo.ok) {
+                setMetricas({
+                    empresasAtivas: resResumo.data.totalEmpresas,
+                    usuariosAtivos7d: resResumo.data.totalUsuariosSistema,
+                    assinaturasEmDia: resResumo.data.totalAssinaturasAtivas,
+                    pendencias: resResumo.data.pendencias
+                });
+            }
+
+            if (resEmpresas.ok) {
+                setEmpresas(resEmpresas.data);
+            }
+        } catch (err: any) {
+            console.error("Erro ao carregar dashboard", err);
+            toast({
+                title: "Falha de conexão",
+                description: err.message || "Erro ao carregar informações.",
+                variant: "destructive"
+            });
         } finally {
             setIsLoading(false);
         }
@@ -86,7 +100,7 @@ export default function PortalSistemaDashboard() {
 
     useEffect(() => {
         carregaLista();
-    }, [firestore]);
+    }, []);
 
     // Estados do Formulario (MVP de criação)
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -123,18 +137,18 @@ export default function PortalSistemaDashboard() {
         const erros: Record<string, string> = {};
 
         if (!novoNome.trim())
-            erros.nome = "Nome é obrigatório.";
+            erros.nomeEmpresa = "Nome é obrigatório.";
 
         if (cnpjNormalizado.length !== 14)
             erros.cnpj = "CNPJ inválido (precisa ter 14 dígitos).";
 
         if (!novoResponsavel.trim())
-            erros.responsavel = "Responsável é obrigatório.";
+            erros.nomeResponsavel = "Responsável é obrigatório.";
 
         if (!novoEmail.trim())
-            erros.email = "E-mail é obrigatório.";
+            erros.emailResponsavel = "E-mail é obrigatório.";
         else if (!/\S+@\S+\.\S+/.test(novoEmail.trim()))
-            erros.email = "E-mail inválido.";
+            erros.emailResponsavel = "E-mail inválido.";
 
         if (!(whatsappNormalizado.length >= 10 && whatsappNormalizado.length <= 13))
             erros.whatsappResponsavel = "WhatsApp inválido (deve ter entre 10 e 13 números com DDD).";
@@ -154,10 +168,10 @@ export default function PortalSistemaDashboard() {
             }
 
             const payload = {
-                nome: novoNome.trim(),
+                nomeEmpresa: novoNome.trim(),
                 cnpj: cnpjNormalizado,
-                responsavelNome: novoResponsavel.trim(),
-                email: novoEmail.trim().toLowerCase(),
+                nomeResponsavel: novoResponsavel.trim(),
+                emailResponsavel: novoEmail.trim().toLowerCase(),
                 whatsappResponsavel: whatsappNormalizado,
                 planoId: novoPlano,
                 status: novoStatus,
@@ -166,70 +180,45 @@ export default function PortalSistemaDashboard() {
             };
 
             type CriarEmpresaResponse = {
-                ok: true;
                 empresaId: string;
-                aceiteToken?: string;
-                aceiteUrl?: string;
+                usuarioId: string;
                 statusEmpresa?: string;
-                emailCriado?: string;
-                senhaGerada?: string;
+                emailResponsavel?: string;
+                linkPrimeiroAcesso?: string;
             };
 
-            const data = await fetchJSON<CriarEmpresaResponse>('/api/sistema/empresas/criar', {
+            const resp = await fetchJSON<CriarEmpresaResponse>('/api/sistema/empresas/criar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
-            // Fake append immediately without waiting global state sync to avoid reload
-            const dataAtual = new Date();
-            const trialFim = new Date();
-            trialFim.setDate(dataAtual.getDate() + 7);
+            if (!resp.ok) return;
 
-            const novaEmpresa: EmpresaAtualizada = {
-                id: data.empresaId,
-                nome: novoNome.trim(),
-                cnpj: cnpjNormalizado,
-                responsavelNome: novoResponsavel.trim(),
-                responsavelEmail: novoEmail.trim().toLowerCase(),
-                whatsappResponsavel: whatsappNormalizado,
-                planoId: novoPlano,
-                planoNome: novoPlano,
-                cicloPagamento: 'MENSAL',
-                valorAtual: novoPlano === 'Starter' ? 97 : (novoPlano === 'Pro' ? 197 : 497),
-                status: 'TRIAL_ATIVO',
-                diasTrial: novoDiasTrial,
-                vencimentoPrimeiraCobrancaEm: novoVencimentoPrimeiraCobranca,
-                trialInicio: dataAtual.toISOString(),
-                trialFim: trialFim.toISOString(),
-                criadoEm: dataAtual.toISOString(),
-                atualizadoEm: dataAtual.toISOString()
-            };
-
-            if (data.aceiteUrl && (!data.aceiteUrl.startsWith("http"))) {
-                throw new Error("aceiteUrl gerada é inválida");
-            }
-
-            setEmpresas([novaEmpresa, ...empresas]);
+            // Recarrega os dados diretamente do servidor para garantir consistência real
+            carregaLista();
             setIsModalOpen(false);
             resetForm();
 
             toast({
                 title: "Empresa e Gestor Criados!",
-                description: `Email: ${data.emailCriado}\nSenha: ${data.senhaGerada}`
+                description: `As credenciais de acesso temporário foram enviadas por e-mail com sucesso.`
             });
             console.log("------------------------");
-            console.log(`EMPRESA: ${novaEmpresa.nome} CRIADA!`);
-            console.log(`EMAIL DE ACESSO: ${data.emailCriado}`);
-            console.log(`SENHA GERADA: ${data.senhaGerada}`);
-            console.log(`LINK DE ACEITE: ${data.aceiteUrl}`);
+            console.log(`EMPRESA: ${resp.data?.empresaId || 'Criada com sucesso!'} CRIADA!`);
             console.log("------------------------");
         } catch (error: any) {
             console.error('[CRIAR_EMPRESA] Falha:', error);
 
-            if (error?.details && typeof error.details === 'object') {
-                setErrosForm(error.details);
-                toast({ title: 'Erro de validação', description: error.message || 'Verifique os dados.', variant: 'destructive' });
+            if (error?.issues && typeof error.issues === 'object') {
+                // Flatten array messages to simple string for UI
+                const flatIssues: Record<string, string> = {};
+                for (const [key, val] of Object.entries(error.issues)) {
+                    if (Array.isArray(val) && val.length > 0) flatIssues[key] = val[0];
+                    else flatIssues[key] = String(val);
+                }
+                setErrosForm(flatIssues);
+                toast({ title: 'Erro de validação', description: error.message || 'Verifique os dados informados.', variant: 'destructive' });
                 return;
             }
 
@@ -440,34 +429,52 @@ export default function PortalSistemaDashboard() {
                         <Building2 className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{mockMétricas.empresasAtivas}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            <span className="text-emerald-500 font-medium">+2</span> esta semana
-                        </p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-[60px]" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold">{metricas.empresasAtivas}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Total de tenants na base
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Usuários ativos (7 dias)</CardTitle>
+                        <CardTitle className="text-sm font-medium">Usuários ativos (admin)</CardTitle>
                         <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{mockMétricas.usuariosAtivos7d}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            <span className="text-emerald-500 font-medium">+15%</span> em relação ao último período
-                        </p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-[60px]" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold">{metricas.usuariosAtivos7d}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Perfil com cargo SISTEMA
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium">Assinaturas em dia</CardTitle>
+                        <CardTitle className="text-sm font-medium">Assinaturas ativas</CardTitle>
                         <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{mockMétricas.assinaturasEmDia}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            83% de conversão base
-                        </p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-[60px]" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold">{metricas.assinaturasEmDia}</div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Planos monetizados regulares
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
                 <Card className="border-warning/50 bg-warning/5">
@@ -476,10 +483,16 @@ export default function PortalSistemaDashboard() {
                         <AlertCircle className="h-4 w-4 text-warning" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-warning-foreground">{mockMétricas.pendencias}</div>
-                        <p className="text-xs text-warning-foreground/80 mt-1">
-                            Contas suspensas requerem ação
-                        </p>
+                        {isLoading ? (
+                            <Skeleton className="h-8 w-[60px]" />
+                        ) : (
+                            <>
+                                <div className="text-2xl font-bold text-warning-foreground">{metricas.pendencias}</div>
+                                <p className="text-xs text-warning-foreground/80 mt-1">
+                                    Contas suspensas requerem ação
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -539,7 +552,14 @@ export default function PortalSistemaDashboard() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        {empresas.length === 0 ? (
+                        {isLoading ? (
+                            <div className="space-y-4">
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-full" />
+                                <Skeleton className="h-10 w-full" />
+                            </div>
+                        ) : empresas.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-8 text-center bg-muted/30 rounded-lg border border-dashed">
                                 <Building2 className="h-8 w-8 text-muted-foreground mb-3" />
                                 <p className="text-sm font-medium text-foreground">Nenhuma empresa encontrada</p>

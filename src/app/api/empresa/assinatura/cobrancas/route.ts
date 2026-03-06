@@ -8,7 +8,7 @@ export async function GET(request: Request) {
         const limitParam = searchParams.get('limite');
 
         if (!empresaId) {
-            return NextResponse.json({ erro: 'ID da Empresa é obrigatório.' }, { status: 400 });
+            return NextResponse.json({ ok: false, code: "VALIDATION_ERROR", message: 'ID da Empresa é obrigatório.' }, { status: 400 });
         }
 
         const limite = limitParam ? parseInt(limitParam, 10) : 10;
@@ -31,10 +31,11 @@ export async function GET(request: Request) {
         }));
 
         return NextResponse.json({
-            cobrancas: history
+            ok: true,
+            data: { cobrancas: history }
         });
     } catch (error: any) {
         console.error("Erro fetch cobrancas:", error);
-        return NextResponse.json({ erro: 'Falha interna' }, { status: 500 });
+        return NextResponse.json({ ok: false, code: "INTERNAL_ERROR", message: 'Falha interna' }, { status: 500 });
     }
 }
