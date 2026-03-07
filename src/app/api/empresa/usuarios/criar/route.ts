@@ -124,7 +124,8 @@ export async function POST(req: Request) {
 
         return jsonOk({
             uid,
-            isNewUser
+            isNewUser,
+            senhaProvisoria: isNewUser ? senhaGerada : undefined
         }, 201);
 
     } catch (error: any) {

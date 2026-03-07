@@ -56,13 +56,22 @@ export function useUsuarios() {
             if (!empresaId) throw new Error("Acesso negado.");
             const payload = { ...dados, empresaId } as any;
 
-            const novo = await repositorioUsuarios.criarUsuario(payload);
+            const novo = await repositorioUsuarios.criarUsuario(payload) as any;
             setUsuarios((prev) => [...prev, novo]);
 
-            toast({
-                title: "Usuário Criado",
-                description: `"${novo.nome}" foi adicionado com sucesso.`,
-            });
+            if (novo.senhaProvisoria) {
+                toast({
+                    title: "Atenção: Senha Provisória",
+                    description: `O usuário "${novo.nome}" foi criado! Copie a senha de primeiro acesso dele: ${novo.senhaProvisoria}`,
+                    duration: 10000, // 10s para dar tempo de copiar
+                });
+            } else {
+                toast({
+                    title: "Usuário Criado",
+                    description: `"${novo.nome}" foi adicionado com sucesso.`,
+                });
+            }
+
             return novo;
         } catch (error: any) {
             toast({

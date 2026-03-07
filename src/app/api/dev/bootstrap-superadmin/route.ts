@@ -1,13 +1,67 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { adminDb, adminAuth } from '@/server/firebase/admin';
-import { FieldValue } from 'firebase-admin/firestore';
 
 const superAdminSchema = z.object({
     nome: z.string().trim().min(2, "Nome é obrigatório"),
     email: z.string().trim().toLowerCase().email("Email inválido"),
     senha: z.string().min(6, "Senha muito curta. Min 6 caracteres"),
 });
+
+export async function GET(req: Request) {
+    if (process.env.NODE_ENV !== "development") {
+        return NextResponse.json({ ok: false, message: "Apenas DEV" }, { status: 404 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const nome = searchParams.get("nome") || "Matheus Almeida";
+    const email = searchParams.get("email") || "malmeidaarruda2@gmail.com";
+    const senha = searchParams.get("senha") || "admin123456";
+
+    // Reutilizar lógica básica sem Zod error mapping para simplicidade
+    return await provisionarAdmin({ nome, email, senha });
+}
+
+async function provisionarAdmin(data: any) {
+    const emailLimpo = data.email.toLowerCase();
+    let uid = "";
+    try {
+        console.log(`[BOOTSTRAP_SUPERADMIN] Tentando criar usuário no Auth: ${emailLimpo}`);
+        const userRecord = await adminAuth.createUser({
+            email: emailLimpo,
+            password: data.senha,
+            displayName: data.nome,
+        });
+        uid = userRecord.uid;
+    } catch (authError: any) {
+        if (authError.code === "auth/email-already-exists") {
+            const userRecord = await adminAuth.getUserByEmail(emailLimpo);
+            uid = userRecord.uid;
+            await adminAuth.updateUser(uid, { password: data.senha });
+        } else {
+            return NextResponse.json({ ok: false, error: authError.message });
+        }
+    }
+
+    const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
+    await usuarioGlobalRef.set({
+        uid: uid,
+        email: emailLimpo,
+        nome: data.nome,
+        papelPortal: "SISTEMA",
+        ativo: true,
+        criadoEm: new Date(),
+        atualizadoEm: new Date()
+    }, { merge: true });
+
+    return NextResponse.json({
+        ok: true,
+        mensagem: "Superadmin restaurado!",
+        email: emailLimpo,
+        senha: data.senha
+    }, { status: 201 });
+}
+
 
 export async function POST(req: Request) {
     // PROTEÇÃO: Só permitir em modo de desenvolvimento
@@ -36,53 +90,10 @@ export async function POST(req: Request) {
         const data = parseResult.data;
         const emailLimpo = data.email;
 
-        // 1. Criar ou Obter usuário no Firebase Auth
-        let uid = "";
-        try {
-            console.log(`[BOOTSTRAP_SUPERADMIN] Tentando criar usuário no Auth: ${emailLimpo}`);
-            const userRecord = await adminAuth.createUser({
-                email: emailLimpo,
-                password: data.senha,
-                displayName: data.nome,
-            });
-            uid = userRecord.uid;
-        } catch (authError: any) {
-            if (authError.code === "auth/email-already-exists") {
-                console.log(`[BOOTSTRAP_SUPERADMIN] Usuário já existe no Auth. Buscando UID...`);
-                const userRecord = await adminAuth.getUserByEmail(emailLimpo);
-                uid = userRecord.uid;
-
-                // Opcional: Atualiza a senha pro que foi mandado no body
-                await adminAuth.updateUser(uid, { password: data.senha });
-            } else {
-                console.error("[BOOTSTRAP_SUPERADMIN] Erro no Auth:", authError);
-                throw authError;
-            }
-        }
-
-        console.log(`[BOOTSTRAP_SUPERADMIN] UID resolvido: ${uid}. Gerando perfil Firestore no papel SISTEMA...`);
-
         // 2. Criar/Atualizar Perfil Global no Firestore
-        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
+        return await provisionarAdmin(data);
 
-        await usuarioGlobalRef.set({
-            uid: uid,
-            email: emailLimpo,
-            nome: data.nome,
-            papelPortal: "SISTEMA", // <--- Garantindo ROOT permission
-            ativo: true,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp()
-        }, { merge: true });
 
-        console.log(`[BOOTSTRAP_SUPERADMIN] Sucesso.`);
-
-        return NextResponse.json({
-            ok: true,
-            uid: uid,
-            email: emailLimpo,
-            mensagem: "Superadmin (SISTEMA) provisionado com sucesso. Faça login."
-        }, { status: 201 });
 
     } catch (error: any) {
         console.error("[BOOTSTRAP_SUPERADMIN] Erro fatal:", error);

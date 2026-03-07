@@ -20,7 +20,7 @@ class RepositorioUsuariosRest implements RepositorioUsuarios {
         if (!dados.empresaId) throw new Error("empresaId obrigatório");
 
         // Em um sistema real, aqui chamaríamos a API que também cria no Firebase Auth
-        const res = await fetchJSON<UsuarioSistema>(`/api/empresa/usuarios`, {
+        const res = await fetchJSON<UsuarioSistema & { senhaProvisoria?: string }>(`/api/empresa/usuarios/criar`, {
             method: 'POST',
             body: JSON.stringify(dados)
         });

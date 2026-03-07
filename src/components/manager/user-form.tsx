@@ -71,7 +71,9 @@ export function UserForm({ onSuccess }: UserFormProps) {
 
       toast({
         title: 'Usuário adicionado!',
-        description: `O colaborador foi vinculado à sua equipe.`,
+        description: data.senhaProvisoria
+          ? `O modelo gerou a senha: ${data.senhaProvisoria}`
+          : `O colaborador foi vinculado à sua equipe.`,
       });
       form.reset();
       onSuccess();
