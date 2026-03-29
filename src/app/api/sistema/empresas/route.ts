@@ -4,7 +4,7 @@ import { repositorioEmpresasAdmin } from "@/server/admin/repositorio-empresas-ad
 export async function GET(req: NextRequest) {
     try {
         const url = new URL(req.url);
-        const limit = parseInt(url.searchParams.get("limit") || "10", 10);
+        const limit = parseInt(url.searchParams.get("limit") || "500", 10);
 
         const empresas = await repositorioEmpresasAdmin.listar(limit);
 

@@ -4,6 +4,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/server/firebase/admin';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
 import { garantirAcessoSistema } from '@/server/auth/garantirAcessoSistema';
+import { servicoEmail } from '@/server/servicos/servico-email';
+import { servicoLinksAutenticacao } from '@/server/servicos/servico-links-autenticacao';
 
 const usuarioSistemaSchema = z.object({
     nome: z.string().trim().min(2, "Nome é obrigatório").max(80),
@@ -76,14 +78,43 @@ export async function POST(req: Request) {
             criadoEm: new Date()
         });
 
-        // Aqui dispararíamos o envio de e-mail com a senha
-        // const origin = req.headers.get("origin") ?? new URL(req.url).origin;
-        // fetch(`${origin}/api/mensagens/email/boas-vindas-sistema` ...
+        // Gerar link de primeiro acesso e disparar e-mail de criação de conta
+        const isDev = process.env.NODE_ENV !== "production";
+        let linkPrimeiroAcesso: string | undefined;
+
+        try {
+            const resultadoLink = await servicoLinksAutenticacao.gerarLinkPrimeiroAcesso(emailLimpo);
+            if (resultadoLink.ok && resultadoLink.link) {
+                linkPrimeiroAcesso = resultadoLink.link;
+
+                // Envio em background
+                Promise.resolve().then(async () => {
+                    const resultado = await servicoEmail.enviarEmailCriacaoConta({
+                        nomeUsuario: data.nome,
+                        nomeEmpresa: "Restaurante360 (Sistema)",
+                        emailDestinatario: emailLimpo,
+                        linkPrimeiroAcesso: linkPrimeiroAcesso!,
+                        papelUsuario: data.papel,
+                    });
+
+                    if (!resultado.ok) {
+                        console.warn(`[CRIAR_USUARIO_SISTEMA] E-mail de criação não enviado para ${emailLimpo}:`, (resultado as any).error);
+                        if (isDev) {
+                            console.log(`\n📨 [DEV] LINK DE PRIMEIRO ACESSO para ${emailLimpo}:\n${linkPrimeiroAcesso}\n`);
+                        }
+                    }
+                }).catch(e => console.error("[CRIAR_USUARIO_SISTEMA] Erro assíncrono no envio de e-mail:", e));
+            } else {
+                console.warn(`[CRIAR_USUARIO_SISTEMA] Não foi possível gerar link para ${emailLimpo}`);
+            }
+        } catch (linkError) {
+            console.warn("[CRIAR_USUARIO_SISTEMA] Falha ao gerar link de primeiro acesso:", linkError);
+        }
 
         return jsonOk({
             uid,
             emailCriado: emailLimpo,
-            senhaGerada
+            ...(isDev && linkPrimeiroAcesso ? { linkPrimeiroAcesso } : {}),
         }, 201);
 
     } catch (error: any) {

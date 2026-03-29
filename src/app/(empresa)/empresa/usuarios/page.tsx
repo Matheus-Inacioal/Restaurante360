@@ -1,18 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Mail } from "lucide-react";
+import { Plus, UserPlus, AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useUsuarios } from "@/hooks/use-usuarios";
 import type { UsuarioSistema } from "@/lib/types/usuarios";
-import { actionLimparUsuariosTeste } from "@/app/actions-limpeza";
-import { useToast } from "@/hooks/use-toast";
 
 // Sub-componentes
 import { KpisUsuarios } from "@/components/usuarios/kpis-usuarios";
@@ -23,40 +15,30 @@ export default function UsuariosPage() {
     const {
         usuarios,
         isCarregando,
+        erro,
+        vazio,
         adicionarUsuario,
         editarUsuario,
-        alterarSenha,
+        redefinirSenha,
         inativar,
-        reativar
+        reativar,
+        recarregarUsuarios,
     } = useUsuarios();
-
-    const { toast } = useToast();
-
-    // MOCK: Usuário logado atualmente simulado para a trava de Auto-Inativação
-    const USUARIO_LOGADO_ID = "usr_admin_001";
 
     // Estado do Modal
     const [modalAberto, setModalAberto] = useState(false);
     const [usuarioEdicao, setUsuarioEdicao] = useState<UsuarioSistema | null>(null);
 
+    // MOCK: Usuário logado atualmente simulado para a trava de Auto-Inativação
+    // TODO: Substituir pelo uid real do useAuth()
+    const USUARIO_LOGADO_ID = "usr_admin_001";
+
     const handleSalvar = async (payload: any) => {
         if (usuarioEdicao) {
-            const { novaSenha, ...rest } = payload;
-
-            // Só edita dados se sobrou algo ou se alterou algo de fato
-            if (Object.keys(rest).length > 0) {
-                await editarUsuario(usuarioEdicao.id, rest);
-            }
-
-            // Se veio solicitação de nova senha, chama alterador (que gera hash/salt novo)
-            if (novaSenha) {
-                await alterarSenha(usuarioEdicao.id, novaSenha);
-            }
+            await editarUsuario(usuarioEdicao.id, payload);
         } else {
-            const { senha, ...rest } = payload;
-            await adicionarUsuario(rest, senha);
+            await adicionarUsuario(payload);
         }
-        // Fechamento e Toast são resolvidos pelo próprio modal/hook
     };
 
     const abrirModalNovo = () => {
@@ -67,6 +49,10 @@ export default function UsuariosPage() {
     const abrirModalEdicao = (usuario: UsuarioSistema) => {
         setUsuarioEdicao(usuario);
         setModalAberto(true);
+    };
+
+    const handleRedefinirSenha = async (email: string, nome: string) => {
+        await redefinirSenha(email, nome);
     };
 
     return (
@@ -82,49 +68,53 @@ export default function UsuariosPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <TooltipProvider delayDuration={300}>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span className="hidden sm:inline-block">
-                                        <Button
-                                            variant="outline"
-                                            disabled
-                                            className="w-full"
-                                        >
-                                            <Mail className="mr-2 h-4 w-4" />
-                                            Convidar por e-mail
-                                        </Button>
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>Em breve: convites com link seguro e expiração</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-
-                        <Button
-                            variant="secondary"
-                            onClick={async () => {
-                                const res = await actionLimparUsuariosTeste();
-                                toast({ title: res.ok ? "Ambiente Limpo" : "Falha na Limpeza", description: res.msg });
-                            }}
-                        >
-                            <Mail className="mr-2 h-4 w-4" />
-                            [DEV] Limpar Lixo (Lucas/Coz)
-                        </Button>
-
                         <Button onClick={abrirModalNovo}>
                             <Plus className="mr-2 h-4 w-4" />
-                            Novo usuário
+                            Novo colaborador
                         </Button>
                     </div>
                 </div>
 
-                {isCarregando && usuarios.length === 0 ? (
-                    <div className="flex justify-center p-12 text-muted-foreground">
-                        Carregando base de usuários...
+                {/* ESTADO: Carregando */}
+                {isCarregando && usuarios.length === 0 && (
+                    <div className="flex flex-col items-center justify-center p-16 text-muted-foreground">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
+                        <p>Carregando base de usuários...</p>
                     </div>
-                ) : (
+                )}
+
+                {/* ESTADO: Erro */}
+                {!isCarregando && erro && (
+                    <div className="flex flex-col items-center justify-center p-16 bg-card rounded-xl border shadow-sm">
+                        <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">Erro ao carregar</h3>
+                        <p className="text-muted-foreground text-center mb-4 max-w-md">
+                            {erro}
+                        </p>
+                        <Button variant="outline" onClick={recarregarUsuarios}>
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Tentar novamente
+                        </Button>
+                    </div>
+                )}
+
+                {/* ESTADO: Vazio */}
+                {!isCarregando && !erro && vazio && (
+                    <div className="flex flex-col items-center justify-center p-16 bg-card rounded-xl border shadow-sm">
+                        <UserPlus className="h-12 w-12 text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">Nenhum colaborador cadastrado</h3>
+                        <p className="text-muted-foreground text-center mb-6 max-w-md">
+                            Comece adicionando seu primeiro colaborador à equipe. Ele receberá um link para definir sua própria senha.
+                        </p>
+                        <Button onClick={abrirModalNovo}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Adicionar primeiro colaborador
+                        </Button>
+                    </div>
+                )}
+
+                {/* ESTADO: Sucesso (com dados) */}
+                {!isCarregando && !erro && !vazio && (
                     <>
                         {/* 2. KPIs (Grid de Resumo) */}
                         <div className="mb-8">
@@ -139,18 +129,19 @@ export default function UsuariosPage() {
                                 onEditar={abrirModalEdicao}
                                 onInativar={inativar}
                                 onReativar={reativar}
+                                onRedefinirSenha={handleRedefinirSenha}
                             />
                         </div>
-
-                        {/* MODAL GLOBAL DA TELA */}
-                        <ModalUsuario
-                            aberto={modalAberto}
-                            aoFechar={() => setModalAberto(false)}
-                            usuarioEdicao={usuarioEdicao}
-                            aoSalvar={handleSalvar}
-                        />
                     </>
                 )}
+
+                {/* MODAL GLOBAL DA TELA */}
+                <ModalUsuario
+                    aberto={modalAberto}
+                    aoFechar={() => setModalAberto(false)}
+                    usuarioEdicao={usuarioEdicao}
+                    aoSalvar={handleSalvar}
+                />
             </div>
         </div>
     );

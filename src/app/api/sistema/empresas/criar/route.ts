@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 import { criarEmpresaService } from '@/server/services/criar-empresa-service';
-import { enviarEmail } from '@/server/email/enviar-email';
-import { gerarTemplatePrimeiroAcesso } from '@/server/templates/email-primeiro-acesso';
+import { servicoEmail } from '@/server/servicos/servico-email';
 import { repositorioAuditoriaAdmin } from '@/server/admin/repositorio-auditoria-admin';
 
 const tenantSchema = z.object({
@@ -78,22 +77,13 @@ export async function POST(req: Request) {
 
         // Disparar e-mail de primeiro acesso em background
         if (linkPrimeiroAcesso && empresaId && usuarioId) {
-            const urlLogin = `${APP_URL}/login`;
-            const template = gerarTemplatePrimeiroAcesso({
-                nomeResponsavel: data.nomeResponsavel,
-                nomeEmpresa: data.nomeEmpresa,
-                emailLogin: data.emailResponsavel,
-                linkReset: linkPrimeiroAcesso,
-                urlLogin,
-            });
-
-            // Executar em background (não bloquear a resposta)
+            // Envio em background via serviço centralizado
             Promise.resolve().then(async () => {
-                const emailResult = await enviarEmail({
-                    to: data.emailResponsavel,
-                    subject: template.subject,
-                    html: template.html,
-                    text: template.text,
+                const emailResult = await servicoEmail.enviarEmailPrimeiroAcesso({
+                    nomeResponsavel: data.nomeResponsavel,
+                    nomeEmpresa: data.nomeEmpresa,
+                    emailDestinatario: data.emailResponsavel,
+                    linkReset: linkPrimeiroAcesso,
                 });
 
                 if (!emailResult.ok) {

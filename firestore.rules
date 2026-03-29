@@ -2,6 +2,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ─── Funções Auxiliares ───────────────────────────────────────
+
     function estaLogado() {
       return request.auth != null;
     }
@@ -34,17 +36,76 @@ service cloud.firestore {
       return portalEmpresaOuOperacional() && perfil().empresaId == empresaId;
     }
 
+    // Verifica se o chamador é gestor (portal EMPRESA) e pertence ao tenant
+    function eGestorDoTenant(empresaId) {
+      return temPerfil()
+        && perfil().papelPortal == "EMPRESA"
+        && perfil().ativo == true
+        && perfil().empresaId == empresaId;
+    }
+
+    // Verifica se o documento alvo pertence ao mesmo tenant do chamador
+    function mesmoTenantDoAlvo(userId) {
+      return exists(/databases/$(database)/documents/usuarios/$(userId))
+        && get(/databases/$(database)/documents/usuarios/$(userId)).data.empresaId == perfil().empresaId;
+    }
+
+    // ─── Coleção: usuarios/{userId} ─────────────────────────────
+
     match /usuarios/{userId} {
-      allow read: if estaLogado() && userId == uid();
-      allow create: if estaLogado() && userId == uid();
-      allow update: if estaLogado() && userId == uid();
+      // Leitura: próprio usuário OU gestor do mesmo tenant OU portal SISTEMA
+      allow read: if estaLogado() && (
+        userId == uid()
+        || portalSistema()
+        || (portalEmpresaOuOperacional() && perfil().papelPortal == "EMPRESA" && mesmoTenantDoAlvo(userId))
+      );
+
+      // Criação: apenas via Admin SDK (API routes) ou portal SISTEMA
+      // Colaboradores não criam outros perfis; gestores criam via API route (Admin SDK)
+      allow create: if estaLogado() && (
+        userId == uid()
+        || portalSistema()
+      );
+
+      // Atualização pelo próprio usuário: apenas campos seguros
+      // Colaboradores NÃO podem alterar: papelPortal, papelEmpresa, empresaId, gestorId, papel, ativo
+      allow update: if estaLogado() && userId == uid()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['papelPortal', 'papelEmpresa', 'empresaId', 'gestorId', 'papel', 'ativo']);
+
+      // Atualização por gestor do mesmo tenant: pode alterar qualquer campo
+      allow update: if estaLogado()
+        && portalEmpresaOuOperacional()
+        && perfil().papelPortal == "EMPRESA"
+        && mesmoTenantDoAlvo(userId);
+
+      // Atualização por portal SISTEMA: pode alterar qualquer campo
+      allow update: if portalSistema();
+
+      // Exclusão: apenas portal SISTEMA
       allow delete: if portalSistema();
     }
+
+    // ─── Coleção: empresas/{empresaId} ──────────────────────────
 
     match /empresas/{empresaId} {
       allow read: if portalSistema() || pertenceAoTenant(empresaId);
       allow create, update, delete: if portalSistema();
 
+      // Subcoleção: empresas/{empresaId}/usuarios/{docId}
+      // Gestor do tenant pode ler e escrever; colaborador pode ler apenas o seu
+      match /usuarios/{docId} {
+        allow read: if portalSistema()
+          || eGestorDoTenant(empresaId)
+          || (estaLogado() && docId == uid() && pertenceAoTenant(empresaId));
+
+        allow create, update: if portalSistema()
+          || eGestorDoTenant(empresaId);
+
+        allow delete: if portalSistema();
+      }
+
+      // Demais subcoleções da empresa (tarefas, rotinas, processos, etc.)
       match /{colecao}/{docId} {
         allow read, write: if portalSistema() || pertenceAoTenant(empresaId);
       }

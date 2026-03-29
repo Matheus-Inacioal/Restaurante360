@@ -171,8 +171,8 @@ export function ModalUsuario({
 
                 {!isEdicao && (
                     <div className="mt-4 p-4 bg-muted/50 rounded-lg border text-sm text-muted-foreground text-center">
-                        <p className="font-medium text-foreground mb-1">Observação sobre o acesso:</p>
-                        <p>A senha será criada pelo próprio usuário através de um convite enviado por e-mail após o cadastro.</p>
+                        <p className="font-medium text-foreground mb-1">Sobre o acesso:</p>
+                        <p>Uma senha temporária será gerada automaticamente. O colaborador receberá um link por e-mail para definir sua própria senha.</p>
                     </div>
                 )}
                 <DialogFooter className="mt-2 text-right">

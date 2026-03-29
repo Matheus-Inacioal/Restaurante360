@@ -7,6 +7,7 @@ export interface RepositorioUsuarios {
     atualizarUsuario(id: string, empresaId: string, atualizacoes: Partial<UsuarioSistema>): Promise<UsuarioSistema>;
     inativarUsuario(id: string, empresaId: string): Promise<void>;
     reativarUsuario(id: string, empresaId: string): Promise<void>;
+    enviarLinkRedefinicaoSenha(emailColaborador: string): Promise<{ sucesso: boolean; linkRedefinicao?: string }>;
 }
 
 class RepositorioUsuariosRest implements RepositorioUsuarios {
@@ -19,8 +20,7 @@ class RepositorioUsuariosRest implements RepositorioUsuarios {
     async criarUsuario(dados: Omit<UsuarioSistema, "id" | "criadoEm" | "atualizadoEm">): Promise<UsuarioSistema> {
         if (!dados.empresaId) throw new Error("empresaId obrigatório");
 
-        // Em um sistema real, aqui chamaríamos a API que também cria no Firebase Auth
-        const res = await fetchJSON<UsuarioSistema & { senhaProvisoria?: string }>(`/api/empresa/usuarios/criar`, {
+        const res = await fetchJSON<UsuarioSistema>(`/api/empresa/usuarios/criar`, {
             method: 'POST',
             body: JSON.stringify(dados)
         });
@@ -37,12 +37,29 @@ class RepositorioUsuariosRest implements RepositorioUsuarios {
         return res.data;
     }
 
-    async inativarUsuario(id: string, empresaId: string): Promise<void> {
-        await this.atualizarUsuario(id, empresaId, { status: "inativo" });
+    async inativarUsuario(uid: string, _empresaId: string): Promise<void> {
+        const res = await fetchJSON<any>(`/api/empresa/usuarios/alterar-status`, {
+            method: 'POST',
+            body: JSON.stringify({ uid, novoStatus: "inativo" })
+        });
+        if (!res.ok) throw new Error(res.message);
     }
 
-    async reativarUsuario(id: string, empresaId: string): Promise<void> {
-        await this.atualizarUsuario(id, empresaId, { status: "ativo" });
+    async reativarUsuario(uid: string, _empresaId: string): Promise<void> {
+        const res = await fetchJSON<any>(`/api/empresa/usuarios/alterar-status`, {
+            method: 'POST',
+            body: JSON.stringify({ uid, novoStatus: "ativo" })
+        });
+        if (!res.ok) throw new Error(res.message);
+    }
+
+    async enviarLinkRedefinicaoSenha(emailColaborador: string): Promise<{ sucesso: boolean; linkRedefinicao?: string }> {
+        const res = await fetchJSON<{ sucesso: boolean; linkRedefinicao?: string }>(`/api/empresa/usuarios/redefinir-senha`, {
+            method: 'POST',
+            body: JSON.stringify({ emailColaborador })
+        });
+        if (!res.ok) throw new Error(res.message);
+        return res.data;
     }
 }
 

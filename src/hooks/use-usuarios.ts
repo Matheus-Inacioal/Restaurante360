@@ -56,27 +56,19 @@ export function useUsuarios() {
             if (!empresaId) throw new Error("Acesso negado.");
             const payload = { ...dados, empresaId } as any;
 
-            const novo = await repositorioUsuarios.criarUsuario(payload) as any;
+            const novo = await repositorioUsuarios.criarUsuario(payload);
             setUsuarios((prev) => [...prev, novo]);
 
-            if (novo.senhaProvisoria) {
-                toast({
-                    title: "Atenção: Senha Provisória",
-                    description: `O usuário "${novo.nome}" foi criado! Copie a senha de primeiro acesso dele: ${novo.senhaProvisoria}`,
-                    duration: 10000, // 10s para dar tempo de copiar
-                });
-            } else {
-                toast({
-                    title: "Usuário Criado",
-                    description: `"${novo.nome}" foi adicionado com sucesso.`,
-                });
-            }
+            toast({
+                title: "Colaborador Criado",
+                description: `"${novo.nome}" foi adicionado à equipe. Um link de redefinição de senha será enviado por e-mail.`,
+            });
 
             return novo;
         } catch (error: any) {
             toast({
                 title: "Falha na Criação",
-                description: error.message || "Não foi possível criar o usuário.",
+                description: error.message || "Não foi possível criar o colaborador.",
                 variant: "destructive",
             });
             throw error;
@@ -104,14 +96,37 @@ export function useUsuarios() {
         }
     };
 
+    const redefinirSenha = async (email: string, nomeColaborador: string) => {
+        try {
+            const resultado = await repositorioUsuarios.enviarLinkRedefinicaoSenha(email);
 
+            toast({
+                title: "Link Enviado",
+                description: `Um link de redefinição de senha foi gerado para ${nomeColaborador}.`,
+            });
+
+            // Em dev, loga o link se retornado
+            if (resultado.linkRedefinicao) {
+                console.log(`[DEV] Link de redefinição para ${email}:`, resultado.linkRedefinicao);
+            }
+
+            return resultado;
+        } catch (error: any) {
+            toast({
+                title: "Falha na Redefinição",
+                description: error.message || "Não foi possível gerar o link de redefinição.",
+                variant: "destructive",
+            });
+            throw error;
+        }
+    };
 
     const inativar = async (id: string, nomeUsuario: string) => {
         try {
             if (!empresaId) throw new Error("Acesso negado.");
             await repositorioUsuarios.inativarUsuario(id, empresaId);
             setUsuarios((prev) =>
-                prev.map((u) => (u.id === id ? { ...u, status: "inativo", atualizadoEm: new Date().toISOString() } : u))
+                prev.map((u) => (u.id === id ? { ...u, status: "inativo" as const, atualizadoEm: new Date().toISOString() } : u))
             );
 
             toast({
@@ -133,7 +148,7 @@ export function useUsuarios() {
             if (!empresaId) throw new Error("Acesso negado.");
             await repositorioUsuarios.reativarUsuario(id, empresaId);
             setUsuarios((prev) =>
-                prev.map((u) => (u.id === id ? { ...u, status: "ativo", atualizadoEm: new Date().toISOString() } : u))
+                prev.map((u) => (u.id === id ? { ...u, status: "ativo" as const, atualizadoEm: new Date().toISOString() } : u))
             );
 
             toast({
@@ -157,6 +172,7 @@ export function useUsuarios() {
         vazio: !isCarregando && usuarios.length === 0,
         adicionarUsuario,
         editarUsuario,
+        redefinirSenha,
         inativar,
         reativar,
         recarregarUsuarios: carregarUsuarios,

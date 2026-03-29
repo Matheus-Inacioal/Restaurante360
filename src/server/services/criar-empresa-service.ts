@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb, adminAuth } from '@/server/firebase/admin';
 import { repositorioEmpresasAdmin } from '@/server/repositories/repositorio-empresas';
 import { repositorioUsuariosAdmin } from '@/server/repositories/repositorio-usuarios';
+import { definirClaimsUsuario } from '@/server/auth/definirClaimsUsuario';
 
 export interface CriarEmpresaInput {
     nomeEmpresa: string;
@@ -123,6 +124,20 @@ export async function criarEmpresaService(data: CriarEmpresaInput): Promise<Cria
         console.log("[CRIAR_EMPRESA_SERVICE] 3. Efetuando o commit da transação no Firestore...");
         await batch.commit();
         console.log(`[CRIAR_EMPRESA_SERVICE] Transação concluída com sucesso. EmpresaId: ${empresaId}, UID: ${uid}`);
+
+        // 2.4 Setar custom claims no Firebase Auth para o gestor
+        // Garante que o token do gestor terá empresaId, papelPortal e papelEmpresa
+        try {
+            await definirClaimsUsuario(uid, {
+                empresaId,
+                papelPortal: "EMPRESA",
+                papelEmpresa: "GESTOR",
+            });
+            console.log(`[CRIAR_EMPRESA_SERVICE] -> Claims do gestor definidas com sucesso.`);
+        } catch (claimsError) {
+            // Não-fatal: o fallback do garantirAcessoEmpresa buscará no Firestore
+            console.warn("[CRIAR_EMPRESA_SERVICE] Falha ao setar claims do gestor (não-fatal):", claimsError);
+        }
 
         // 3. Gerar link de primeiro acesso (Firebase Auth reset link)
         console.log("[CRIAR_EMPRESA_SERVICE] 4. Gerando link de primeiro acesso");

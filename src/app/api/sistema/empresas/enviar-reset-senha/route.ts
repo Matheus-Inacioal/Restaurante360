@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { garantirAcessoSistema } from "@/server/auth/garantirAcessoSistema";
 import { adminAuth, adminDb } from "@/server/firebase/admin";
-import { enviarEmail } from "@/server/email/enviar-email";
-import { gerarTemplateResetSenha } from "@/server/templates/email-reset-senha";
+import { servicoEmail } from "@/server/servicos/servico-email";
 import { repositorioAuditoriaAdmin } from "@/server/admin/repositorio-auditoria-admin";
 
 const schema = z.object({
@@ -65,21 +64,12 @@ export async function POST(req: Request) {
             }, { status: err.code === "auth/user-not-found" ? 404 : 500 });
         }
 
-        // Montar template
-        const template = gerarTemplateResetSenha({
-            nomeResponsavel,
-            nomeEmpresa,
-            emailLogin,
+        // Enviar e-mail via serviço centralizado
+        const emailResult = await servicoEmail.enviarEmailResetSenha({
+            emailDestinatario: emailLogin,
             linkReset,
-            urlLogin,
-        });
-
-        // Enviar e-mail
-        const emailResult = await enviarEmail({
-            to: emailLogin,
-            subject: template.subject,
-            html: template.html,
-            text: template.text,
+            nomeUsuario: nomeResponsavel,
+            nomeEmpresa,
         });
 
         // Auditoria (não-bloqueante)

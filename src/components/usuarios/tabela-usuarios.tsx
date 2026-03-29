@@ -49,6 +49,7 @@ interface TabelaUsuariosProps {
     onEditar: (usuario: UsuarioSistema) => void;
     onInativar: (id: string, nome: string) => Promise<void>;
     onReativar: (id: string, nome: string) => Promise<void>;
+    onRedefinirSenha: (email: string, nome: string) => Promise<void>;
     usuarioLogadoId: string; // Para impedir auto-inativação
 }
 
@@ -57,6 +58,7 @@ export function TabelaUsuarios({
     onEditar,
     onInativar,
     onReativar,
+    onRedefinirSenha,
     usuarioLogadoId
 }: TabelaUsuariosProps) {
     const [busca, setBusca] = useState("");
@@ -204,7 +206,9 @@ export function TabelaUsuarios({
                                                     <Pencil className="mr-2 h-4 w-4" />
                                                     Editar
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem disabled>
+                                                <DropdownMenuItem
+                                                    onClick={() => onRedefinirSenha(usuario.email, usuario.nome)}
+                                                >
                                                     <KeyRound className="mr-2 h-4 w-4" />
                                                     Redefinir senha
                                                 </DropdownMenuItem>
