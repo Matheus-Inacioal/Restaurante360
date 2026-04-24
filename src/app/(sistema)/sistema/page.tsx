@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { z } from 'zod';
 import { formatarCNPJ, formatarTelefoneBR, normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
 import { fetchJSON } from '@/lib/http/fetch-json';
-import { testarConexaoFirestore } from '@/lib/firebase/teste-conexao';
 import { ModalEmpresaDetalhes } from '@/app/(sistema)/sistema/components/empresas/ModalEmpresaDetalhes';
 import {
     Building2,
@@ -50,14 +49,12 @@ import {
     TableHeader,
     TableRow
 } from '@/components/ui/table';
-import { EmpresaAtualizada } from '@/lib/types/financeiro';
-import { useFirebase } from '@/firebase/provider';
-import { repositorioEmpresasFirestore } from '@/lib/repositories/repositorio-empresas-firestore';
+import type { Empresa } from '@/lib/tipos/identidade';
 
 export default function PortalSistemaDashboard() {
     const { toast } = useToast();
 
-    const [empresas, setEmpresas] = useState<EmpresaAtualizada[]>([]);
+    const [empresas, setEmpresas] = useState<Empresa[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [metricas, setMetricas] = useState({
         empresasAtivas: 0,
@@ -682,34 +679,7 @@ export default function PortalSistemaDashboard() {
                     onUpdated={() => carregaLista()}
                 />
 
-                {/* PAINEL DEV - TESTE DE CONEXÃO (Apenas Desenvolvimento) */}
-                {process.env.NODE_ENV === "development" && (
-                    <Card className="md:col-span-7 lg:col-span-3 border-emerald-500/30 bg-emerald-500/5">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-emerald-600">
-                                <Activity className="h-5 w-5" />
-                                Desenvolvimento (DEV)
-                            </CardTitle>
-                            <CardDescription>
-                                Área exclusiva de testes interativos no Firebase Spark.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button
-                                className="w-full bg-emerald-600 hover:bg-emerald-700"
-                                onClick={async () => {
-                                    try {
-                                        await testarConexaoFirestore();
-                                        toast({ title: "Sucesso!", description: "Documento criado em /teste", variant: "default" });
-                                    } catch (err: any) {
-                                        toast({ title: "Falha de conexão", description: err.message, variant: "destructive" });
-                                    }
-                                }}>
-                                Testar Firestore
-                            </Button>
-                        </CardContent>
-                    </Card>
-                )}
+
             </div>
         </div>
     );

@@ -1,113 +1,84 @@
 import 'server-only';
 import { obterSessao, SessaoUsuario } from './obterSessao';
 import { jsonErro } from '@/server/http/respostas';
-import { adminDb } from '@/server/firebase/admin';
+import { repositorioUsuariosPg } from '@/server/repositorios/repositorio-usuarios-pg';
+import { repositorioEmpresasPg } from '@/server/repositorios/repositorio-empresas-pg';
 
 export interface ResultadoAcessoEmpresa {
-    sessao: SessaoUsuario;
-    empresa: { id: string; ativo: boolean; [key: string]: any };
+  sessao: SessaoUsuario;
+  empresaId: string;
 }
 
 /**
  * Garante que o chamador está autenticado e pertence a uma empresa ativa.
  *
- * Fluxo:
- * 1. Valida token (Authorization Bearer)
- * 2. Obtém empresaId (da claim ou do Firestore como fallback)
- * 3. Valida que a empresa existe e está ativa no Firestore
- * 4. (Opcional) valida empresaIdAlvo se informado
+ * Aceita os papéis: gestorCorporativo, gestorLocal, operacional
+ * (saasAdmin NÃO usa esta função — usa garantirAcessoSistema)
  *
- * @param req Request original
- * @param empresaIdAlvo (opcional) para validar que o acesso é a uma empresa específica
+ * Fluxo:
+ * 1. Valida token Firebase (Bearer)
+ * 2. Busca perfil no PostgreSQL pelo UID
+ * 3. Valida papel e vínculo com empresa
+ * 4. Valida que a empresa existe e está ativa
+ * 5. (Opcional) valida empresaIdAlvo
  */
 export async function garantirAcessoEmpresa(
-    req: Request,
-    empresaIdAlvo?: string
+  req: Request,
+  empresaIdAlvo?: string
 ): Promise<ResultadoAcessoEmpresa | Response> {
-    // 1. Obter sessão do token
-    const sessao = await obterSessao(req);
+  // 1. Validar token
+  const sessao = await obterSessao(req);
+  if (!sessao) {
+    return jsonErro('Não autorizado. Token inválido ou ausente.', 'UNAUTHORIZED', 401);
+  }
 
-    if (!sessao) {
-        return jsonErro("Não autorizado. Token inválido ou ausente.", "UNAUTHORIZED", 401);
-    }
+  // 2. Buscar perfil completo no PostgreSQL
+  const perfil = await repositorioUsuariosPg.obterPorId(sessao.uid);
+  if (!perfil) {
+    return jsonErro('Perfil não encontrado. Contate o administrador.', 'UNAUTHORIZED', 401);
+  }
 
-    // 2. Obter empresaId — da claim OU fallback no Firestore
-    let empresaId = sessao.empresaId;
+  if (perfil.status === 'inativo') {
+    return jsonErro('Usuário inativo. Contate o administrador.', 'FORBIDDEN', 403);
+  }
 
-    if (!empresaId) {
-        // Fallback: buscar no perfil do Firestore (útil quando claims ainda não foram propagadas)
-        try {
-            const perfilDoc = await adminDb.collection("usuarios").doc(sessao.uid).get();
-            if (perfilDoc.exists) {
-                const perfil = perfilDoc.data();
-                empresaId = perfil?.empresaId;
+  // 3. Validar papel — saasAdmin não entra aqui
+  if (perfil.papel === 'saasAdmin') {
+    return jsonErro('Acesso não permitido neste portal.', 'FORBIDDEN', 403);
+  }
 
-                // Preencher dados da sessão a partir do Firestore
-                if (empresaId) {
-                    sessao.empresaId = empresaId;
-                    sessao.papelPortal = sessao.papelPortal || perfil?.papelPortal;
-                    sessao.papelEmpresa = sessao.papelEmpresa || perfil?.papelEmpresa;
+  // 4. Validar empresaId
+  const empresaId = perfil.empresaId;
+  if (!empresaId) {
+    return jsonErro(
+      'Usuário sem vínculo com empresa. Contate o administrador.',
+      'FORBIDDEN',
+      403
+    );
+  }
 
-                    if (process.env.NODE_ENV !== "production") {
-                        console.log(
-                            `[DEV][ACESSO] Fallback Firestore para UID ${sessao.uid}: empresaId=${empresaId}, papelPortal=${sessao.papelPortal}`
-                        );
-                    }
-                }
-            }
-        } catch (err) {
-            console.error("[ACESSO] Erro ao buscar perfil no Firestore como fallback:", err);
-        }
-    }
+  // 5. Validar empresa ativa
+  const empresa = await repositorioEmpresasPg.obterPorId(empresaId);
+  if (!empresa) {
+    return jsonErro('Empresa não encontrada. Contate o suporte.', 'FORBIDDEN', 403);
+  }
+  if (empresa.status === 'SUSPENSO' || empresa.status === 'CANCELADO') {
+    return jsonErro(
+      'Sua empresa está temporariamente inativa. Contate o administrador.',
+      'FORBIDDEN',
+      403
+    );
+  }
 
-    if (!empresaId) {
-        return jsonErro(
-            "Usuário sem vínculo com empresa. Verifique se seu cadastro está completo.",
-            "FORBIDDEN",
-            403
-        );
-    }
+  // 6. Validar empresaId alvo (se informado)
+  if (empresaIdAlvo && empresaId !== empresaIdAlvo) {
+    return jsonErro('Acesso negado à empresa solicitada.', 'FORBIDDEN', 403);
+  }
 
-    // 3. Validar que a empresa existe e está ativa no Firestore
-    let empresaData: any;
-    try {
-        const empresaDoc = await adminDb.collection("empresas").doc(empresaId).get();
+  // Preencher sessao com dados do PostgreSQL (fallback caso claims não estejam atualizadas)
+  sessao.papel = perfil.papel;
+  sessao.empresaId = empresaId;
+  sessao.unidadeId = perfil.unidadeId ?? undefined;
 
-        if (!empresaDoc.exists) {
-            if (process.env.NODE_ENV !== "production") {
-                console.warn(`[DEV][ACESSO] Empresa ${empresaId} não encontrada no Firestore.`);
-            }
-            return jsonErro(
-                "Empresa não encontrada. Contate o suporte.",
-                "FORBIDDEN",
-                403
-            );
-        }
-
-        empresaData = { id: empresaDoc.id, ...empresaDoc.data() };
-
-        // Verificar se a empresa está ativa (campo 'ativo' ou 'status')
-        const empresaAtiva = empresaData.ativo !== false && empresaData.status !== "inativo";
-        if (!empresaAtiva) {
-            return jsonErro(
-                "Sua empresa está temporariamente inativa. Contate o administrador.",
-                "FORBIDDEN",
-                403
-            );
-        }
-    } catch (err) {
-        console.error("[ACESSO] Erro ao validar empresa no Firestore:", err);
-        return jsonErro(
-            "Erro ao validar vínculo com empresa.",
-            "INTERNAL_ERROR",
-            500
-        );
-    }
-
-    // 4. Validar empresaId alvo (se informado)
-    if (empresaIdAlvo && empresaId !== empresaIdAlvo) {
-        return jsonErro("Acesso negado à empresa solicitada.", "FORBIDDEN", 403);
-    }
-
-    return { sessao, empresa: empresaData };
+  return { sessao, empresaId };
 }

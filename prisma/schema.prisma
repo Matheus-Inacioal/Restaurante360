@@ -1,0 +1,540 @@
+// Restaurante360 — Schema Prisma (PostgreSQL)
+// Modelagem relacional com suporte a multiunidade, 4 perfis e áreas/funções
+// Inclui entidades operacionais (Onda 2) e financeiras (Onda 3)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+/// Perfil de acesso global do usuário no SaaS
+enum PapelUsuario {
+  saasAdmin         // Acesso total à plataforma
+  gestorCorporativo // Gestor de toda a empresa (todas as unidades)
+  gestorLocal       // Gestor de uma unidade específica
+  operacional       // Colaborador operacional
+}
+
+/// Status de ativação de qualquer entidade
+enum StatusAtivo {
+  ativo
+  inativo
+}
+
+/// Status da empresa no SaaS
+enum StatusEmpresa {
+  TRIAL_ATIVO
+  ATIVO
+  GRACE
+  SUSPENSO
+  CANCELADO
+}
+
+/// Status de uma tarefa
+enum StatusTarefa {
+  pendente
+  em_progresso
+  concluida
+  atrasada
+}
+
+/// Tipo de tarefa
+enum TipoTarefa {
+  tarefa
+  checklist
+}
+
+/// Prioridade de tarefa
+enum PrioridadeTarefa {
+  Alta
+  Media
+  Baixa
+}
+
+/// Frequência de rotina
+enum FrequenciaRotina {
+  diaria
+  semanal
+  mensal
+}
+
+/// Tipo de categoria
+enum TipoCategoria {
+  processos
+  rotinas
+  tarefas
+  geral
+}
+
+/// Tipo de notificação
+enum CategoriaNotificacao {
+  tarefa_atrasada
+  tarefa_atribuida
+  sistema
+  rotina_alerta
+}
+
+// ─────────────────────────────────────────────────────────────
+// EMPRESAS (Tenants)
+// ─────────────────────────────────────────────────────────────
+
+model Empresa {
+  id                 String        @id @default(cuid())
+  nome               String
+  cnpj               String        @unique
+  responsavelNome    String
+  responsavelEmail   String
+  whatsappResponsavel String?
+  status             StatusEmpresa @default(TRIAL_ATIVO)
+  planoId            String?
+  planoNome          String?
+  diasTrial          Int           @default(14)
+  trialInicio        DateTime?
+  trialFim           DateTime?
+  criadoEm           DateTime      @default(now())
+  atualizadoEm       DateTime      @updatedAt
+
+  // Integrações externas
+  asaasCustomerId    String?       @unique
+
+  // Relações
+  unidades      Unidade[]
+  usuarios      Usuario[]
+  areas         Area[]
+  tarefas       Tarefa[]
+  rotinas       Rotina[]
+  processos     Processo[]
+  categorias    Categoria[]
+  notificacoes  Notificacao[]
+  auditoria     Auditoria[]
+  assinaturas   Assinatura[]
+  cobrancas     Cobranca[]
+  aceites       AceiteAssinatura[]
+
+  @@map("empresas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// UNIDADES (por empresa)
+// ─────────────────────────────────────────────────────────────
+
+model Unidade {
+  id           String     @id @default(cuid())
+  empresaId    String
+  nome         String
+  endereco     String?
+  cidade       String?
+  estado       String?
+  status       StatusAtivo @default(ativo)
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  // Relações
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuarios Usuario[]
+
+  @@map("unidades")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ÁREAS (por empresa — ex: Cozinha, Salão, Bar)
+// ─────────────────────────────────────────────────────────────
+
+model Area {
+  id           String     @id @default(cuid())
+  empresaId    String
+  nome         String
+  descricao    String?
+  status       StatusAtivo @default(ativo)
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  // Relações
+  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  funcoes  Funcao[]
+  usuarios Usuario[]
+
+  @@map("areas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FUNÇÕES / CARGOS (por área)
+// ─────────────────────────────────────────────────────────────
+
+model Funcao {
+  id           String     @id @default(cuid())
+  areaId       String
+  nome         String     // Ex: Chefe de Cozinha, Garçom, Barista
+  descricao    String?
+  status       StatusAtivo @default(ativo)
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  // Relações
+  area     Area      @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  usuarios Usuario[]
+
+  @@map("funcoes")
+}
+
+// ─────────────────────────────────────────────────────────────
+// USUÁRIOS
+// ─────────────────────────────────────────────────────────────
+
+model Usuario {
+  id           String      @id // = UID do Firebase Auth
+  email        String      @unique
+  nome         String
+  papel        PapelUsuario
+  status       StatusAtivo  @default(ativo)
+
+  // Vínculo com empresa (obrigatório para todos exceto saasAdmin)
+  empresaId    String?
+  // Vínculo com unidade (obrigatório para gestorLocal e operacional)
+  unidadeId    String?
+  // Vínculo com área (opcional, para operacional)
+  areaId       String?
+  // Vínculo com função (opcional, para operacional)
+  funcaoId     String?
+
+  // Controle de acesso inicial
+  mustResetPassword Boolean @default(false)
+
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+  ultimoAcessoEm DateTime?
+
+  // Relações
+  empresa           Empresa?       @relation(fields: [empresaId], references: [id])
+  unidade           Unidade?       @relation(fields: [unidadeId], references: [id])
+  area              Area?          @relation(fields: [areaId], references: [id])
+  funcao            Funcao?        @relation(fields: [funcaoId], references: [id])
+  auditoria         Auditoria[]
+  tarefasCriadas    Tarefa[]       @relation("TarefaCriador")
+  tarefasResponsavel Tarefa[]      @relation("TarefaResponsavel")
+  rotinasCriadas    Rotina[]       @relation("RotinaCriador")
+  notificacoes      Notificacao[]
+
+  @@map("usuarios")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CATEGORIAS (por empresa — usadas em processos, rotinas, tarefas)
+// ─────────────────────────────────────────────────────────────
+
+model Categoria {
+  id           String        @id @default(cuid())
+  empresaId    String
+  nome         String
+  tipo         TipoCategoria @default(geral)
+  ativa        Boolean       @default(true)
+  ordem        Int?
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+
+  // Relações
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  processos Processo[]
+
+  @@map("categorias")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TAREFAS (por empresa)
+// ─────────────────────────────────────────────────────────────
+
+model Tarefa {
+  id            String          @id @default(cuid())
+  empresaId     String
+  titulo        String
+  descricao     String?
+  tipo          TipoTarefa      @default(tarefa)
+  status        StatusTarefa    @default(pendente)
+  prioridade    PrioridadeTarefa @default(Media)
+  responsavelId String?
+  prazo         DateTime?
+  tags          String[]        // Array nativo do PostgreSQL
+  criadoPor     String
+  criadoEm      DateTime        @default(now())
+  atualizadoEm  DateTime        @updatedAt
+
+  // Itens de verificação (checklist) — armazenados como JSON
+  itensVerificacao Json?         // [{id, texto, concluido}]
+
+  // Origem (se veio de rotina)
+  origemTipo      String?       // "rotina"
+  origemRotinaId  String?
+  origemDataRef   String?       // "YYYY-MM-DD"
+
+  // Relações
+  empresa     Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criador     Usuario   @relation("TarefaCriador", fields: [criadoPor], references: [id])
+  responsavel Usuario?  @relation("TarefaResponsavel", fields: [responsavelId], references: [id])
+  geracoes    GeracaoRotina[]
+
+  @@index([empresaId, status])
+  @@index([empresaId, criadoPor])
+  @@map("tarefas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ROTINAS (por empresa)
+// ─────────────────────────────────────────────────────────────
+
+model Rotina {
+  id                   String           @id @default(cuid())
+  empresaId            String
+  titulo               String
+  descricao            String?
+  ativa                Boolean          @default(true)
+  frequencia           FrequenciaRotina
+  diasSemana           Int[]            // [0..6] — 0=Dom, 6=Sáb
+  diaDoMes             Int?             // 1..31
+  horarioPreferencial  String?          // "HH:MM"
+  responsavelPadraoId  String?
+  tipoTarefaGerada     TipoTarefa       @default(tarefa)
+  checklistModelo      Json?            // [{id, texto}]
+  tags                 String[]
+  criadoPor            String
+  criadoEm             DateTime         @default(now())
+  atualizadoEm         DateTime         @updatedAt
+
+  // Relações
+  empresa  Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criador  Usuario         @relation("RotinaCriador", fields: [criadoPor], references: [id])
+  geracoes GeracaoRotina[]
+
+  @@index([empresaId, ativa])
+  @@map("rotinas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// GERAÇÕES DE ROTINA (histórico)
+// ─────────────────────────────────────────────────────────────
+
+model GeracaoRotina {
+  id             String   @id @default(cuid())
+  empresaId      String
+  rotinaId       String
+  tarefaGeradaId String
+  dataReferencia String   // "YYYY-MM-DD"
+  criadoEm       DateTime @default(now())
+
+  // Relações
+  rotina       Rotina @relation(fields: [rotinaId], references: [id], onDelete: Cascade)
+  tarefaGerada Tarefa @relation(fields: [tarefaGeradaId], references: [id], onDelete: Cascade)
+
+  @@unique([rotinaId, dataReferencia])
+  @@map("geracoes_rotina")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PROCESSOS (por empresa)
+// ─────────────────────────────────────────────────────────────
+
+model Processo {
+  id           String   @id @default(cuid())
+  empresaId    String
+  titulo       String
+  descricao    String?
+  categoriaId  String?
+  ativo        Boolean  @default(true)
+  versao       Int      @default(1)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // Passos do processo — armazenados como JSON
+  passos       Json?    // [{id, titulo, descricao, exigeFoto}]
+
+  // Relações
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  categoria Categoria? @relation(fields: [categoriaId], references: [id])
+
+  @@index([empresaId, ativo])
+  @@map("processos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICAÇÕES (por usuário)
+// ─────────────────────────────────────────────────────────────
+
+model Notificacao {
+  id          String               @id @default(cuid())
+  empresaId   String?
+  usuarioId   String
+  titulo      String
+  descricao   String
+  tipo        CategoriaNotificacao @default(sistema)
+  lida        Boolean              @default(false)
+  origem      String?
+  entidadeId  String?
+  criadoEm    DateTime             @default(now())
+
+  // Relações
+  empresa Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, lida])
+  @@map("notificacoes")
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDITORIA
+// ─────────────────────────────────────────────────────────────
+
+model Auditoria {
+  id        String   @id @default(cuid())
+  empresaId String?
+  usuarioId String
+  acao      String   // Ex: "usuario.criado", "empresa.atualizada"
+  entidade  String   // Ex: "usuario", "empresa", "unidade"
+  entidadeId String
+  detalhe   Json?
+  criadoEm  DateTime @default(now())
+
+  empresa Empresa? @relation(fields: [empresaId], references: [id])
+  usuario Usuario  @relation(fields: [usuarioId], references: [id])
+
+  @@index([empresaId])
+  @@index([criadoEm])
+  @@map("auditoria")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCEIRO — Planos
+// ─────────────────────────────────────────────────────────────
+
+model Plano {
+  id           String   @id @default(cuid())
+  nome         String   @unique  // Starter, Pro, Enterprise
+  descricao    String?
+  valorMensal  Float
+  valorAnual   Float
+  features     String[]
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  // Relações
+  assinaturas Assinatura[]
+  aceites     AceiteAssinatura[]
+
+  @@map("planos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCEIRO — Assinaturas
+// ─────────────────────────────────────────────────────────────
+
+model Assinatura {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  planoId             String
+  asaasSubscriptionId String?  @unique
+  status              String   @default("ACTIVE") // ACTIVE, OVERDUE, SUSPENDED, EXPIRED, CANCELED
+  valor               Float
+  ciclo               String   @default("MENSAL") // MENSAL, ANUAL, SEMESTRAL
+  formaPagamento      String   @default("UNDEFINED")
+  proximoVencimento   DateTime?
+  inicioAssinatura    DateTime
+  criadaEm            DateTime @default(now())
+  atualizadaEm        DateTime @updatedAt
+
+  // Relações
+  empresa   Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  plano     Plano      @relation(fields: [planoId], references: [id])
+  cobrancas Cobranca[]
+
+  @@map("assinaturas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCEIRO — Cobranças
+// ─────────────────────────────────────────────────────────────
+
+model Cobranca {
+  id                  String    @id @default(cuid())
+  empresaId           String
+  assinaturaId        String?
+  asaasPaymentId      String?   @unique
+  asaasSubscriptionId String?
+  valor               Float
+  valorLiquido        Float?
+  vencimento          DateTime
+  status              String    @default("PENDING")
+  formaPagamento      String    @default("UNDEFINED")
+  invoiceUrl          String?
+  bankSlipUrl         String?
+  pixPayload          String?
+  pagaEm              DateTime?
+  criadaEm            DateTime  @default(now())
+  atualizadaEm        DateTime  @updatedAt
+
+  // Relações
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  assinatura  Assinatura? @relation(fields: [assinaturaId], references: [id])
+
+  @@index([empresaId, status])
+  @@map("cobrancas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCEIRO — Aceites de Assinatura
+// ─────────────────────────────────────────────────────────────
+
+model AceiteAssinatura {
+  id            String   @id @default(cuid())
+  empresaId     String
+  planoId       String
+  ciclo         String   @default("MENSAL")
+  valor         Float
+  status        String   @default("PENDENTE") // PENDENTE, ACEITO, EXPIRADO
+  expiraEm      DateTime
+
+  // Metadados do locatário
+  diasTrial     Int?
+  vencimentoPrimeiraCobrancaEm DateTime?
+  responsavelNome    String?
+  responsavelEmail   String?
+  whatsappResponsavel String?
+  cnpj               String?
+
+  // Quando aceito
+  aceitoEm                DateTime?
+  aceitoPorCanal          String?   // WHATSAPP, EMAIL, LINK_DIRETO
+  formaPagamentoEscolhida String?
+
+  // Integração Asaas
+  asaasCustomerId      String?
+  asaasSubscriptionId  String?
+
+  criadoEm     DateTime @default(now())
+
+  // Relações
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  plano   Plano   @relation(fields: [planoId], references: [id])
+
+  @@map("aceites_assinatura")
+}
+
+// ─────────────────────────────────────────────────────────────
+// FINANCEIRO — Webhook Eventos (idempotência)
+// ─────────────────────────────────────────────────────────────
+
+model WebhookEvento {
+  id           String   @id // ID do evento externo (Asaas)
+  tipo         String
+  processado   Boolean  @default(false)
+  payload      Json?
+  processadoEm DateTime?
+  criadoEm     DateTime @default(now())
+
+  @@map("webhook_eventos")
+}

@@ -1,237 +1,137 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { randomBytes } from 'crypto';
-import { adminDb, adminAuth } from '@/server/firebase/admin';
-import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
+/**
+ * POST /api/empresa/usuarios/criar
+ *
+ * Cria um novo usuário operacional ou gestorLocal vinculado à empresa.
+ * Requer: gestorCorporativo ou gestorLocal (com restrição de papel)
+ */
+import { NextRequest, NextResponse } from 'next/server';
 import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
-import { definirClaimsUsuario } from '@/server/auth/definirClaimsUsuario';
-import { servicoEmail } from '@/server/servicos/servico-email';
+import { repositorioUsuariosPg } from '@/server/repositorios/repositorio-usuarios-pg';
+import { adminAuth } from '@/server/firebase/admin';
+import type { PapelUsuario } from '@/lib/tipos/identidade';
 
-/**
- * Schema de validação para criação de colaborador.
- * Papéis aceitos: gestor, operacional, bar, pia, cozinha, producao, garcon.
- */
-const criarColaboradorSchema = z.object({
-    nome: z.string().trim().min(3, "O nome deve ter pelo menos 3 caracteres.").max(80),
-    email: z.string().trim().toLowerCase().email("Por favor, insira um email válido."),
-    papel: z.enum(['gestor', 'operacional', 'bar', 'pia', 'cozinha', 'producao', 'garcon']),
-});
+// Papéis que podem ser criados por cada gestor
+const PAPEIS_CRIATIVEIS_POR_GESTOR_CORPORATIVO: PapelUsuario[] = [
+  'gestorLocal',
+  'operacional',
+];
+const PAPEIS_CRIATIVEIS_POR_GESTOR_LOCAL: PapelUsuario[] = ['operacional'];
 
-/**
- * Gera uma senha aleatória forte com 20 caracteres.
- * Inclui letras maiúsculas, minúsculas, números e caracteres especiais.
- * Esta senha NÃO é retornada ao cliente — o colaborador usará redefinição de senha.
- */
-function gerarSenhaForte(): string {
-    const bytes = randomBytes(20);
-    const base = bytes.toString('base64url');
-    // Garante complexidade: adiciona maiúscula, número e especial
-    return `${base}A1@x`;
-}
+export async function POST(req: NextRequest) {
+  const acesso = await garantirAcessoEmpresa(req);
+  if (acesso instanceof Response) return acesso;
 
-export async function POST(req: Request) {
-    try {
-        // 1. Validar sessão e acesso à empresa
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+  const papel = acesso.sessao.papel;
+  if (papel !== 'gestorCorporativo' && papel !== 'gestorLocal') {
+    return NextResponse.json(
+      { ok: false, code: 'FORBIDDEN', message: 'Sem permissão para criar usuários.' },
+      { status: 403 }
+    );
+  }
 
-        const sessao = authResult.sessao;
-        const empresaId = sessao.empresaId!;
+  try {
+    const body = await req.json();
+    const {
+      email,
+      nome,
+      papelNovo,
+      unidadeId,
+      areaId,
+      funcaoId,
+    }: {
+      email: string;
+      nome: string;
+      papelNovo: PapelUsuario;
+      unidadeId?: string;
+      areaId?: string;
+      funcaoId?: string;
+    } = body;
 
-        // 2. Validar que o chamador é gestor (papelPortal EMPRESA ou SISTEMA)
-        const papelPermitido = sessao.papelPortal === 'EMPRESA' || sessao.papelPortal === 'SISTEMA';
-        if (!papelPermitido) {
-            return jsonErro(
-                "Apenas gestores podem criar colaboradores.",
-                "FORBIDDEN",
-                403
-            );
-        }
-
-        // 3. Validar dados de entrada
-        const body = await req.json();
-        const parseResult = criarColaboradorSchema.safeParse(body);
-        if (!parseResult.success) {
-            return mapearZodError(parseResult.error);
-        }
-
-        const dados = parseResult.data;
-
-        if (typeof adminDb.collection !== 'function') {
-            return jsonErro("Admin DB indisponível no ambiente abstrato.", "FIREBASE_ADMIN_ERROR", 500);
-        }
-
-        // 4. Criar ou obter usuário no Firebase Auth
-        const emailLimpo = dados.email;
-        const senhaForte = gerarSenhaForte();
-
-        let uid = "";
-        let isNewUser = false;
-
-        try {
-            const userRecord = await adminAuth.createUser({
-                email: emailLimpo,
-                password: senhaForte,
-                displayName: dados.nome,
-            });
-            uid = userRecord.uid;
-            isNewUser = true;
-        } catch (authError: any) {
-            if (authError.code === "auth/email-already-exists") {
-                // Se já existe no Auth, pega o UID
-                const existingUser = await adminAuth.getUserByEmail(emailLimpo);
-                uid = existingUser.uid;
-                isNewUser = false;
-            } else {
-                throw authError;
-            }
-        }
-
-        // 5. Criar registros no Firestore (batch atômico)
-        const batch = adminDb.batch();
-
-        // 5a. Perfil global em usuarios/{uid}
-        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
-        const globalDoc = await usuarioGlobalRef.get();
-
-        if (!globalDoc.exists) {
-            batch.set(usuarioGlobalRef, {
-                uid: uid,
-                email: emailLimpo,
-                nome: dados.nome,
-                papelPortal: "OPERACIONAL",
-                papelEmpresa: dados.papel.toUpperCase(),
-                empresaId: empresaId,
-                gestorId: sessao.uid,
-                ativo: true,
-                criadoEm: new Date(),
-                atualizadoEm: new Date()
-            });
-        } else {
-            // Se perfil global já existe mas sem empresaId, atualiza vínculo
-            const globalData = globalDoc.data();
-            if (!globalData?.empresaId) {
-                batch.update(usuarioGlobalRef, {
-                    empresaId: empresaId,
-                    gestorId: sessao.uid,
-                    papelPortal: "OPERACIONAL",
-                    papelEmpresa: dados.papel.toUpperCase(),
-                    atualizadoEm: new Date()
-                });
-            }
-        }
-
-        // 5b. Registro na subcoleção empresas/{empresaId}/usuarios/{uid}
-        const usuarioTenantRef = adminDb
-            .collection("empresas")
-            .doc(empresaId)
-            .collection("usuarios")
-            .doc(uid);
-
-        const tenantDoc = await usuarioTenantRef.get();
-        if (tenantDoc.exists) {
-            return jsonErro("Usuário já faz parte da sua equipe.", "USUARIO_EXISTENTE", 400);
-        }
-
-        batch.set(usuarioTenantRef, {
-            uid: uid,
-            nome: dados.nome,
-            email: emailLimpo,
-            papel: dados.papel,
-            ativo: true,
-            criadoEm: new Date(),
-            atualizadoEm: new Date()
-        });
-
-        // 5c. Registrar auditoria
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        batch.set(auditoriaRef, {
-            empresaId: empresaId,
-            entidade: "USUARIO_EMPRESA",
-            acao: "CRIAR",
-            entidadeId: uid,
-            criadoPor: sessao.uid,
-            detalhes: `Colaborador '${dados.nome}' adicionado à equipe como '${dados.papel}'`,
-            criadoEm: new Date()
-        });
-
-        // 6. Commit atômico
-        try {
-            await batch.commit();
-        } catch (dbError: any) {
-            console.error("[CRIAR_COLABORADOR] Erro fatal no Firestore:", dbError);
-            // Rollback: apagar conta Auth se foi recém-criada
-            if (isNewUser && uid) {
-                console.warn(`[CRIAR_COLABORADOR] Revertendo criação Auth — UID: ${uid}`);
-                await adminAuth.deleteUser(uid).catch(() => { });
-            }
-            return jsonErro(`Falha ao salvar colaborador: ${dbError.message}`, "FIRESTORE_ERROR", 500);
-        }
-
-        // 6b. Setar custom claims no Firebase Auth para o novo colaborador
-        // Isso garante que o token dele terá empresaId, papelPortal e papelEmpresa
-        try {
-            await definirClaimsUsuario(uid, {
-                empresaId: empresaId,
-                papelPortal: "OPERACIONAL",
-                papelEmpresa: dados.papel.toUpperCase(),
-            });
-        } catch (claimsError) {
-            // Não-fatal: o fallback do garantirAcessoEmpresa buscará no Firestore
-            console.warn("[CRIAR_COLABORADOR] Falha ao setar claims (não-fatal):", claimsError);
-        }
-
-        // 7. Gerar link de ativação e enviar e-mail de convite
-        let linkRedefinicao: string | undefined;
-        try {
-            linkRedefinicao = await adminAuth.generatePasswordResetLink(emailLimpo);
-        } catch (linkError) {
-            console.warn("[CRIAR_COLABORADOR] Não foi possível gerar link de ativação:", linkError);
-        }
-
-        // 8. Buscar nome da empresa para o template
-        let nomeEmpresa: string | undefined;
-        try {
-            const empresaDoc = await adminDb.collection("empresas").doc(empresaId).get();
-            nomeEmpresa = empresaDoc.data()?.nomeEmpresa;
-        } catch {
-            // Não-fatal
-        }
-
-        // 9. Disparar e-mail de convite de acesso em background
-        const isDev = process.env.NODE_ENV !== "production";
-        if (linkRedefinicao) {
-            Promise.resolve().then(async () => {
-                const resultado = await servicoEmail.enviarEmailConviteAcesso({
-                    nomeUsuario: dados.nome,
-                    nomeEmpresa: nomeEmpresa || "sua empresa",
-                    emailDestinatario: emailLimpo,
-                    linkAtivacao: linkRedefinicao!,
-                    perfilUsuario: dados.papel,
-                });
-
-                if (!resultado.ok) {
-                    console.warn(`[CRIAR_COLABORADOR] E-mail de convite não enviado para ${emailLimpo}:`, (resultado as any).error);
-                    if (isDev) {
-                        console.log(`\n📨 [DEV] LINK DE CONVITE para ${emailLimpo}:\n${linkRedefinicao}\n`);
-                    }
-                }
-            }).catch(e => console.error("[CRIAR_COLABORADOR] Erro assíncrono no envio de convite:", e));
-        }
-
-        return jsonOk({
-            uid,
-            nome: dados.nome,
-            email: emailLimpo,
-            papel: dados.papel,
-            ativo: true,
-            criadoEm: new Date().toISOString(),
-            atualizadoEm: new Date().toISOString(),
-            ...(isDev && linkRedefinicao ? { linkConvite: linkRedefinicao } : {}),
-        }, 201);
-
-    } catch (error: any) {
-        console.error("[CRIAR_COLABORADOR] Erro:", error);
-        return jsonErro("Falha interna ao criar colaborador.", "INTERNAL_ERROR", 500);
+    if (!email || !nome || !papelNovo) {
+      return NextResponse.json(
+        { ok: false, code: 'VALIDATION_ERROR', message: 'email, nome e papelNovo são obrigatórios.' },
+        { status: 400 }
+      );
     }
+
+    // Validar se o papel pode ser criado pelo gestor atual
+    const papeisPermitidos =
+      papel === 'gestorCorporativo'
+        ? PAPEIS_CRIATIVEIS_POR_GESTOR_CORPORATIVO
+        : PAPEIS_CRIATIVEIS_POR_GESTOR_LOCAL;
+
+    if (!papeisPermitidos.includes(papelNovo)) {
+      return NextResponse.json(
+        { ok: false, code: 'FORBIDDEN', message: `Você não pode criar usuários com o papel "${papelNovo}".` },
+        { status: 403 }
+      );
+    }
+
+    // gestorLocal só pode criar na própria unidade
+    const unidadeIdFinal =
+      papel === 'gestorLocal'
+        ? acesso.sessao.unidadeId
+        : unidadeId;
+
+    // 1. Criar no Firebase Auth
+    let uid: string;
+    let linkPrimeiroAcesso: string | undefined;
+
+    try {
+      const userRecord = await adminAuth.createUser({
+        email,
+        displayName: nome,
+      });
+      uid = userRecord.uid;
+    } catch (authErr: any) {
+      if (authErr.code === 'auth/email-already-exists') {
+        return NextResponse.json(
+          { ok: false, code: 'EMAIL_JA_EXISTE', message: 'Já existe um usuário com este e-mail.' },
+          { status: 409 }
+        );
+      }
+      throw authErr;
+    }
+
+    // 2. Criar perfil no PostgreSQL
+    const usuario = await repositorioUsuariosPg.criar({
+      id: uid,
+      email,
+      nome,
+      papel: papelNovo,
+      empresaId: acesso.empresaId,
+      unidadeId: unidadeIdFinal,
+      areaId,
+      funcaoId,
+      mustResetPassword: true,
+    });
+
+    // 3. Setar claims Firebase
+    await adminAuth.setCustomUserClaims(uid, {
+      papel: papelNovo,
+      empresaId: acesso.empresaId,
+      unidadeId: unidadeIdFinal,
+    });
+
+    // 4. Gerar link de acesso
+    try {
+      const appUrl = process.env.APP_URL || 'http://localhost:9002';
+      linkPrimeiroAcesso = await adminAuth.generatePasswordResetLink(email, {
+        url: `${appUrl}/login`,
+      });
+    } catch {
+      console.warn('[criar-usuario] Link de acesso não gerado');
+    }
+
+    return NextResponse.json(
+      { ok: true, data: { usuario, linkPrimeiroAcesso } },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error('[POST /api/empresa/usuarios/criar] Erro:', error);
+    return NextResponse.json(
+      { ok: false, code: 'INTERNAL_ERROR', message: 'Erro ao criar usuário.' },
+      { status: 500 }
+    );
+  }
 }

@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { repositorioUsuarios } from "@/lib/repositories/repositorio-usuarios";
+import { fetchJSON } from "@/lib/http/fetch-json";
 import { calcularRotaInicial } from "@/lib/redirecionamento";
+import type { PerfilUsuario } from "@/lib/tipos/identidade";
 import { DialogEsqueciSenha } from "@/components/auth/DialogEsqueciSenha";
 
 export default function LoginPage() {
@@ -42,41 +43,35 @@ export default function LoginPage() {
         const uid = result.uid;
 
         try {
-            // Force block any fake-redirects. Fetch user RBAC strictly.
-            const perfil = await repositorioUsuarios.obterPerfilPorUid(uid);
+            // Busca perfil do PostgreSQL via API (autenticado com Bearer Token Firebase)
+            const resPostal = await fetchJSON<PerfilUsuario>('/api/auth/perfil');
 
-            if (!perfil) {
-                // Remove the partial session leak explicitly
+            if (!resPostal.ok) {
                 await logout();
-                toast({ title: "Acesso Restrito", description: "Seu usuário ainda não tem perfil no sistema. Contate o administrador.", variant: "destructive" });
+                const msg = 'message' in resPostal ? resPostal.message : 'Perfil não encontrado.';
+                toast({ title: "Acesso Restrito", description: msg, variant: "destructive" });
                 setIsSubmitting(false);
                 return;
             }
 
-            if (!perfil.ativo) {
+            const perfil = resPostal.data;
+
+            if (perfil.status === 'inativo') {
                 await logout();
-                toast({ title: "Acesso Negado", description: "Usuário desativado.", variant: "destructive" });
+                toast({ title: "Acesso Negado", description: "Usuário desativado. Contate o administrador.", variant: "destructive" });
                 setIsSubmitting(false);
                 return;
             }
 
-            if ((perfil as any).mustResetPassword === true) {
+            if (perfil.mustResetPassword === true) {
                 console.info("LOGIN_SUCCESS: Usuário forçado a redefinir a senha provisória.");
                 router.replace("/login/alterar-senha");
                 return;
             }
 
-            // O redirecionamento base do SaaS para a home correta
+            // Redireciona para o portal correto baseado no papel
             const url = calcularRotaInicial(perfil);
-
-            // Requisito: Se papelPortal !== SISTEMA (apenas como aviso de console para o log da tela master caso o user force. Mas o router vai jogar para a respectiva URL). 
-            // Se o login deve ser puríssimo /sistema, nós podemos validar aqui. O sistema suporta 3 portais no Root.
-            if (perfil.papelPortal !== "SISTEMA") {
-                console.info("LOGIN_SUCCESS: Usuário NÃO é admin de Sistema. Redirecionando para portal específico:", url);
-            } else {
-                console.info("LOGIN_SUCCESS: Admin do Sistema autenticado com sucesso.");
-            }
-
+            console.info(`LOGIN_SUCCESS: Redirecionando para ${url} (papel: ${perfil.papel})`);
             router.replace(url);
 
         } catch (error: any) {

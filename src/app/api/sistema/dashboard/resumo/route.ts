@@ -1,33 +1,45 @@
-import { NextResponse } from "next/server";
-import { repositorioEmpresasAdmin } from "@/server/admin/repositorio-empresas-admin";
-import { repositorioAssinaturasAdmin } from "@/server/admin/repositorio-assinaturas-admin";
-import { repositorioUsuariosAdmin } from "@/server/admin/repositorio-usuarios-admin";
+/**
+ * GET /api/sistema/dashboard/resumo
+ *
+ * Retorna métricas agregadas do sistema para o dashboard do saasAdmin.
+ * Migrado de Firestore Admin → PostgreSQL (Prisma)
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { garantirAcessoSistema } from '@/server/auth/garantirAcessoSistema';
+import { prisma } from '@/lib/prisma';
 
-export async function GET() {
-    try {
-        const totalEmpresas = await repositorioEmpresasAdmin.obterTotal();
-        const totalUsuariosSistema = await repositorioUsuariosAdmin.obterTotalSistema();
-        const totalAssinaturasAtivas = await repositorioAssinaturasAdmin.obterTotalAtivas();
-        const pendencias = await repositorioEmpresasAdmin.listarPendencias();
+export async function GET(req: NextRequest) {
+  const acesso = await garantirAcessoSistema(req);
+  if (acesso instanceof Response) return acesso;
 
-        return NextResponse.json({
-            ok: true,
-            data: {
-                totalEmpresas,
-                totalUsuariosSistema,
-                totalAssinaturasAtivas,
-                pendencias,
-            },
-        });
-    } catch (error: any) {
-        console.error("Erro ao obter metadados do dashboard resumo admin:", error);
-        return NextResponse.json(
-            {
-                ok: false,
-                code: "INTERNAL_ERROR",
-                message: "Erro interno ao processar resumo do sistema.",
-            },
-            { status: 500 }
-        );
-    }
+  try {
+    // Contagens paralelas para performance
+    const [
+      totalEmpresas,
+      totalUsuariosSistema,
+      empresasSuspensas,
+    ] = await Promise.all([
+      prisma.empresa.count(),
+      prisma.usuario.count({ where: { papel: 'saasAdmin' } }),
+      prisma.empresa.count({
+        where: { status: { in: ['SUSPENSO', 'CANCELADO'] } },
+      }),
+    ]);
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        totalEmpresas,
+        totalUsuariosSistema,
+        totalAssinaturasAtivas: totalEmpresas, // simplificado — expandir depois
+        pendencias: empresasSuspensas,
+      },
+    });
+  } catch (error: any) {
+    console.error('[GET /api/sistema/dashboard/resumo] Erro:', error);
+    return NextResponse.json(
+      { ok: false, code: 'INTERNAL_ERROR', message: 'Erro ao buscar resumo do sistema.' },
+      { status: 500 }
+    );
+  }
 }

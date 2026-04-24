@@ -1,148 +1,114 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
-import { normalizarCNPJ, normalizarWhatsApp } from '@/lib/formatadores/formato';
-import { criarEmpresaService } from '@/server/services/criar-empresa-service';
-import { servicoEmail } from '@/server/servicos/servico-email';
-import { repositorioAuditoriaAdmin } from '@/server/admin/repositorio-auditoria-admin';
+/**
+ * POST /api/sistema/empresas/criar
+ *
+ * Cria uma nova empresa e seu gestorCorporativo no Firebase Auth + PostgreSQL.
+ * Requer: saasAdmin
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { garantirAcessoSistema } from '@/server/auth/garantirAcessoSistema';
+import { repositorioEmpresasPg } from '@/server/repositorios/repositorio-empresas-pg';
+import { repositorioUsuariosPg } from '@/server/repositorios/repositorio-usuarios-pg';
+import { adminAuth } from '@/server/firebase/admin';
 
-const tenantSchema = z.object({
-    nomeEmpresa: z.string().trim().min(2, "Nome da empresa é obrigatório").max(120),
-    cnpj: z.string().min(14, "CNPJ precisa ter no mínimo 14 números"),
-    nomeResponsavel: z.string().trim().min(2, "Nome do responsável é obrigatório").max(80),
-    emailResponsavel: z.string().trim().toLowerCase().email("Email inválido"),
-    whatsappResponsavel: z.string().min(10, "WhatsApp precisa ter no mínimo 10 números"),
-    planoId: z.string().min(1, "ID do plano é obrigatório"),
-    diasTrial: z.number().int().min(0, "Dias trial devem ser maiores ou iguais a 0").default(7),
-    vencimentoPrimeiraCobrancaEm: z.string().optional(),
-});
+export async function POST(req: NextRequest) {
+  const acesso = await garantirAcessoSistema(req);
+  if (acesso instanceof Response) return acesso;
 
-const APP_URL = process.env.APP_URL || "http://localhost:9002";
+  try {
+    const body = await req.json();
+    const {
+      nomeEmpresa,
+      cnpj,
+      nomeResponsavel,
+      emailResponsavel,
+      whatsappResponsavel,
+      planoNome,
+      diasTrial = 14,
+    } = body;
 
-export async function POST(req: Request) {
-    try {
-        const body = await req.json();
-
-        const parseResult = tenantSchema.safeParse(body);
-        if (!parseResult.success) {
-            return NextResponse.json({
-                ok: false,
-                code: "VALIDATION_ERROR",
-                message: 'Dados inválidos ou incompletos.',
-                issues: parseResult.error.flatten().fieldErrors
-            }, { status: 400 });
-        }
-
-        const data = parseResult.data;
-        const cnpjLimpo = normalizarCNPJ(data.cnpj);
-        const wappLimpo = normalizarWhatsApp(data.whatsappResponsavel);
-
-        const criacaoResult = await criarEmpresaService({
-            nomeEmpresa: data.nomeEmpresa,
-            cnpj: cnpjLimpo,
-            nomeResponsavel: data.nomeResponsavel,
-            emailResponsavel: data.emailResponsavel,
-            whatsappResponsavel: wappLimpo,
-            planoId: data.planoId,
-            diasTrial: data.diasTrial,
-            vencimentoPrimeiraCobrancaEm: data.vencimentoPrimeiraCobrancaEm,
-        });
-
-        // Validando se o serviço falhou durante o processo
-        if (!criacaoResult.ok) {
-            console.error(`[CRIAR_EMPRESA_ERRO] Code: ${criacaoResult.code} | Message: ${criacaoResult.message}`, criacaoResult.originalError || 'Sem stack trace original');
-
-            const isDev = process.env.NODE_ENV === "development";
-            const statusError = criacaoResult.code === "EMAIL_JA_EXISTE" ? 400 : 500;
-
-            return NextResponse.json({
-                ok: false,
-                code: criacaoResult.code,
-                message: `${criacaoResult.message} - DETALHE: ${criacaoResult.originalError?.message || 'Sem detalhes originais'}`,
-                details: criacaoResult.originalError ? {
-                    name: criacaoResult.originalError.name,
-                    message: criacaoResult.originalError.message,
-                    stack: criacaoResult.originalError.stack,
-                    code: criacaoResult.originalError.code
-                } : undefined
-            }, {
-                status: statusError,
-                headers: { "Content-Type": "application/json" }
-            });
-        }
-
-        const { empresaId, usuarioId, linkPrimeiroAcesso, statusEmpresa, emailResponsavel } = criacaoResult;
-
-        const isDev = process.env.NODE_ENV !== "production";
-        let debugInviteLink: string | undefined;
-
-        // Disparar e-mail de primeiro acesso em background
-        if (linkPrimeiroAcesso && empresaId && usuarioId) {
-            // Envio em background via serviço centralizado
-            Promise.resolve().then(async () => {
-                const emailResult = await servicoEmail.enviarEmailPrimeiroAcesso({
-                    nomeResponsavel: data.nomeResponsavel,
-                    nomeEmpresa: data.nomeEmpresa,
-                    emailDestinatario: data.emailResponsavel,
-                    linkReset: linkPrimeiroAcesso,
-                });
-
-                if (!emailResult.ok) {
-                    console.warn(`[CRIAR_EMPRESA_ROUTE] E-mail de convite não enviado para ${data.emailResponsavel}. Motivo: ${(emailResult as any).error}`);
-                    if (isDev) {
-                        console.log(`\n📨 [DEV] LINK DE CONVITE (primeiro acesso):\n${linkPrimeiroAcesso}\n`);
-                    }
-                }
-
-                // Auditoria
-                repositorioAuditoriaAdmin.registrarLog({
-                    tipo: "SISTEMA_ENVIAR_CONVITE_PRIMEIRO_ACESSO",
-                    empresaId,
-                    descricao: `Convite de primeiro acesso enviado para ${data.emailResponsavel} (empresa: ${data.nomeEmpresa})`,
-                    metadata: { emailEnviado: emailResult.ok, nomeEmpresa: data.nomeEmpresa },
-                }).catch(console.error);
-            }).catch(e => console.error("[CRIAR_EMPRESA_ROUTE] Erro assíncrono durante e-mail:", e));
-
-            // Em DEV, incluir o link no JSON de resposta para facilitar teste
-            if (isDev) {
-                debugInviteLink = linkPrimeiroAcesso;
-            }
-        }
-
-        // Auditoria de criação da empresa
-        repositorioAuditoriaAdmin.registrarLog({
-            tipo: "EMPRESA_CRIADA",
-            empresaId: empresaId || "unknown",
-            descricao: `Empresa ${data.nomeEmpresa} criada. Responsável: ${data.emailResponsavel}`,
-            metadata: { cnpj: cnpjLimpo, planoId: data.planoId, diasTrial: data.diasTrial },
-        }).catch(console.error);
-
-        return NextResponse.json({
-            ok: true,
-            empresaId,
-            usuarioId,
-            statusEmpresa,
-            emailResponsavel,
-            ...(debugInviteLink && { linkPrimeiroAcesso: debugInviteLink }),
-        }, {
-            status: 201,
-            headers: { "Content-Type": "application/json" }
-        });
-
-    } catch (error: any) {
-        console.error("[CRIAR_EMPRESA_ROUTE_FATAL] Erro não capturado na rota:", error);
-
-        return NextResponse.json({
-            ok: false,
-            code: "INTERNAL_ERROR",
-            message: "Erro interno do servidor ao provisionar empresa.",
-            details: process.env.NODE_ENV === "development" ? {
-                name: error?.name,
-                message: error?.message,
-                stack: error?.stack
-            } : undefined
-        }, {
-            status: 500,
-            headers: { "Content-Type": "application/json" }
-        });
+    if (!nomeEmpresa || !cnpj || !nomeResponsavel || !emailResponsavel) {
+      return NextResponse.json(
+        { ok: false, code: 'VALIDATION_ERROR', message: 'Campos obrigatórios: nomeEmpresa, cnpj, nomeResponsavel, emailResponsavel.' },
+        { status: 400 }
+      );
     }
+
+    // 1. Criar empresa no PostgreSQL
+    const empresa = await repositorioEmpresasPg.criar({
+      nome: nomeEmpresa,
+      cnpj,
+      responsavelNome: nomeResponsavel,
+      responsavelEmail: emailResponsavel,
+      whatsappResponsavel,
+      planoNome,
+      diasTrial,
+      status: diasTrial > 0 ? 'TRIAL_ATIVO' : 'ATIVO',
+    });
+
+    // 2. Criar usuário gestorCorporativo no Firebase Auth
+    let uid: string;
+    let linkPrimeiroAcesso: string | undefined;
+
+    try {
+      const userRecord = await adminAuth.createUser({
+        email: emailResponsavel,
+        displayName: nomeResponsavel,
+      });
+      uid = userRecord.uid;
+
+      // 3. Criar perfil no PostgreSQL
+      await repositorioUsuariosPg.criar({
+        id: uid,
+        email: emailResponsavel,
+        nome: nomeResponsavel,
+        papel: 'gestorCorporativo',
+        empresaId: empresa.id,
+        mustResetPassword: true,
+      });
+
+      // 4. Setar claims no Firebase para acelerar o próximo login
+      await adminAuth.setCustomUserClaims(uid, {
+        papel: 'gestorCorporativo',
+        empresaId: empresa.id,
+      });
+
+      // 5. Gerar link de primeiro acesso
+      try {
+        const appUrl = process.env.APP_URL || 'http://localhost:9002';
+        linkPrimeiroAcesso = await adminAuth.generatePasswordResetLink(emailResponsavel, {
+          url: `${appUrl}/login`,
+        });
+      } catch (linkErr) {
+        console.warn('[criar-empresa] Não foi possível gerar link de convite:', linkErr);
+      }
+    } catch (authErr: any) {
+      // Rollback: apagar empresa criada
+      console.error('[criar-empresa] Erro ao criar usuário Auth:', authErr);
+      // Não excluímos a empresa por ora — sinalizar para o admin
+      if (authErr.code === 'auth/email-already-exists') {
+        return NextResponse.json(
+          { ok: false, code: 'EMAIL_JA_EXISTE', message: 'Já existe um usuário com este e-mail.' },
+          { status: 409 }
+        );
+      }
+      throw authErr;
+    }
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        empresaId: empresa.id,
+        usuarioId: uid,
+        emailResponsavel,
+        linkPrimeiroAcesso,
+      },
+    }, { status: 201 });
+
+  } catch (error: any) {
+    console.error('[POST /api/sistema/empresas/criar] Erro:', error);
+    return NextResponse.json(
+      { ok: false, code: 'INTERNAL_ERROR', message: 'Erro interno ao criar empresa.' },
+      { status: 500 }
+    );
+  }
 }
