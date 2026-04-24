@@ -21,16 +21,14 @@ export type PapelUsuario =
 
 export type StatusAtivo = "ativo" | "inativo";
 
-// ─── Sessão do usuário (extraída do token Firebase) ──────────
+// ─── Sessão do usuário (extraída do JWT) ──────────
 
 /**
- * Dados da sessão extraídos do ID Token do Firebase Auth
- * O UID é a chave primária no PostgreSQL também.
+ * Dados da sessão extraídos do token JWT assinado (PostgreSQL)
  */
 export interface SessaoUsuario {
   uid: string;
   email?: string;
-  // Claims customizadas definidas via Firebase Admin
   papel?: PapelUsuario;
   empresaId?: string;
   unidadeId?: string;
@@ -39,7 +37,7 @@ export interface SessaoUsuario {
 // ─── Perfil completo (carregado do PostgreSQL) ───────────────
 
 export interface PerfilUsuario {
-  id: string;              // = UID Firebase
+  id: string;              // UUID gerado pelo Prisma (cuid)
   email: string;
   nome: string;
   papel: PapelUsuario;

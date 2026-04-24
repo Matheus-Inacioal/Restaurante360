@@ -1,77 +1,111 @@
 import "server-only";
-import { adminDb } from "@/server/firebase/admin";
+import { prisma } from "@/lib/prisma";
+
+// Mapeamento básico de nomes de rotas para models do Prisma
+// Isso evita expor a API do prisma inteira e garante segurança
+const mapeamentoColecoes: Record<string, keyof typeof prisma> = {
+    tarefas: "tarefa",
+    rotinas: "rotina",
+    processos: "processo",
+    categorias: "categoria",
+    unidades: "unidade",
+    areas: "area",
+    funcoes: "funcao",
+    usuarios: "usuario"
+};
+
+function getModel(colecao: string) {
+    const modelName = mapeamentoColecoes[colecao];
+    if (!modelName) {
+        throw new Error(`Coleção ${colecao} não suportada ou não mapeada.`);
+    }
+    return (prisma as any)[modelName] as any;
+}
 
 export const repositorioGenericoAdmin = {
     async listar(colecao: string, empresaId: string) {
-        const snap = await adminDb.collection(colecao).where('empresaId', '==', empresaId).get();
-        // Ordenação client-side ou firebase. Aqui vamos mandar puro e ordenar onde necessário, ou ordenar pelo criadoEm
-        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        return docs.sort((a: any, b: any) => {
-            if (a.criadoEm && b.criadoEm) {
-                return new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime();
-            }
-            return 0;
+        const model = getModel(colecao);
+        const docs = await model.findMany({
+            where: { empresaId },
+            orderBy: { criadoEm: "desc" }
         });
+        
+        // Mapear datas para string ISO, como no Firebase
+        return docs.map((doc: any) => ({
+            ...doc,
+            criadoEm: doc.criadoEm ? doc.criadoEm.toISOString() : undefined,
+            atualizadoEm: doc.atualizadoEm ? doc.atualizadoEm.toISOString() : undefined,
+        }));
     },
 
     async obterPorId(colecao: string, empresaId: string, id: string) {
-        const doc = await adminDb.collection(colecao).doc(id).get();
-        if (!doc.exists) return null;
+        const model = getModel(colecao);
+        const doc = await model.findUnique({
+            where: { id }
+        });
 
-        const data = doc.data() as any;
-        if (data.empresaId !== empresaId) return null; // Trava de tenant de segurança
+        if (!doc) return null;
+        if (doc.empresaId !== empresaId) return null; // Trava de tenant
 
-        return { id: doc.id, ...data };
+        return {
+            ...doc,
+            criadoEm: doc.criadoEm ? doc.criadoEm.toISOString() : undefined,
+            atualizadoEm: doc.atualizadoEm ? doc.atualizadoEm.toISOString() : undefined,
+        };
     },
 
     async criar(colecao: string, empresaId: string, data: any) {
-        // Se a data já contiver um id gerado pelo frontend (por exemplo crypto.randomUUID), usaremos ele, senão o firebase gera
-        const customId = data.id;
-        const docRef = customId ? adminDb.collection(colecao).doc(customId) : adminDb.collection(colecao).doc();
+        const model = getModel(colecao);
+        
+        // Remover campos que o Prisma não aceita no create (como undefined id)
+        const { id, criadoEm, atualizadoEm, ...payload } = data;
+        
+        const docCriado = await model.create({
+            data: {
+                ...(id ? { id } : {}),
+                ...payload,
+                empresaId,
+            }
+        });
 
-        const agora = new Date().toISOString();
-        const payload = {
-            ...data,
-            empresaId,
-            id: docRef.id,
-            criadoEm: data.criadoEm || agora,
-            atualizadoEm: data.atualizadoEm || agora
+        return {
+            ...docCriado,
+            criadoEm: docCriado.criadoEm.toISOString(),
+            atualizadoEm: docCriado.atualizadoEm.toISOString(),
         };
-
-        await docRef.set(payload);
-        return payload;
     },
 
     async atualizar(colecao: string, empresaId: string, id: string, atualizacoes: any) {
-        const docRef = adminDb.collection(colecao).doc(id);
-        const doc = await docRef.get();
+        const model = getModel(colecao);
+        
+        // Verificar tenant antes
+        const existe = await model.findUnique({ where: { id } });
+        if (!existe) throw new Error(`Item com ID ${id} não encontrado na coleção ${colecao}.`);
+        if (existe.empresaId !== empresaId) throw new Error("Acesso negado: Tentativa de atualizar dado de outro tenant.");
 
-        if (!doc.exists) {
-            throw new Error(`Item com ID ${id} não encontrado na coleção ${colecao}.`);
-        }
+        // Remover campos não atualizáveis
+        const { id: _id, empresaId: _emp, criadoEm, atualizadoEm, ...payload } = atualizacoes;
 
-        if (doc.data()?.empresaId !== empresaId) {
-            throw new Error("Acesso negado: Tentativa de atualizar dado de outro tenant.");
-        }
+        const docAtualizado = await model.update({
+            where: { id },
+            data: payload
+        });
 
-        const agora = new Date().toISOString();
-        const payload = { ...atualizacoes, atualizadoEm: agora };
-
-        await docRef.update(payload);
-        return { id, ...doc.data(), ...payload };
+        return {
+            ...docAtualizado,
+            criadoEm: docAtualizado.criadoEm.toISOString(),
+            atualizadoEm: docAtualizado.atualizadoEm.toISOString(),
+        };
     },
 
     async excluir(colecao: string, empresaId: string, id: string) {
-        const docRef = adminDb.collection(colecao).doc(id);
-        const doc = await docRef.get();
+        const model = getModel(colecao);
+        
+        const existe = await model.findUnique({ where: { id } });
+        if (!existe) return true; // Já excluido
+        if (existe.empresaId !== empresaId) throw new Error("Acesso negado: Tentativa de excluir dado de outro tenant.");
 
-        if (!doc.exists) return true; // Já foi excluido
-
-        if (doc.data()?.empresaId !== empresaId) {
-            throw new Error("Acesso negado: Tentativa de excluir dado de outro tenant.");
-        }
-
-        await docRef.delete();
+        await model.delete({ where: { id } });
         return true;
     }
 };

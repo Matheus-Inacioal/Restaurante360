@@ -1,36 +1,26 @@
 import { NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
     try {
-        const listUsersResult = await adminAuth.listUsers(100);
+        // Obter usuários para limpar baseado nos emails listados anteriormente
+        const emailsParaLimpar = ["lucasnarciso", "cozinha", "financeirorebu"];
+        
+        const usuarios = await prisma.usuario.findMany({
+            where: {
+                OR: emailsParaLimpar.map(t => ({ email: { contains: t } }))
+            }
+        });
+
         const apagados: string[] = [];
 
-        for (const user of listUsersResult.users) {
-            const email = (user.email || "").toLowerCase();
-            const displayName = (user.displayName || "").toLowerCase();
+        for (const user of usuarios) {
+            console.log(`[LIMPEZA] Apagando no PG: ${user.email} (${user.id})`);
+            await prisma.usuario.delete({
+                where: { id: user.id }
+            });
 
-            if (
-                email.includes("lucasnarciso") ||
-                displayName.includes("lucas") ||
-                email.includes("cozinha") ||
-                displayName.includes("cozinha") ||
-                email.includes("financeirorebu")
-            ) {
-                console.log(`[LIMPEZA] Apagando Auth: ${email} (${user.uid})`);
-                await adminAuth.deleteUser(user.uid);
-
-                // Tenta apagar no firestore global
-                await adminDb.collection("usuarios").doc(user.uid).delete().catch(() => { });
-
-                // Tenta apagar nas empresas
-                const empresasSnapshot = await adminDb.collection("empresas").get();
-                for (const emp of empresasSnapshot.docs) {
-                    await adminDb.collection("empresas").doc(emp.id).collection("usuarios").doc(user.uid).delete().catch(() => { });
-                }
-
-                apagados.push(email);
-            }
+            apagados.push(user.email);
         }
 
         return NextResponse.json({ ok: true, apagados });

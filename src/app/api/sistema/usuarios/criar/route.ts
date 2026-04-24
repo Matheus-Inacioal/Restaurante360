@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb, adminAuth } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
+import { hashSenha } from '@/server/auth/senha';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
 import { garantirAcessoSistema } from '@/server/auth/garantirAcessoSistema';
 import { servicoEmail } from '@/server/servicos/servico-email';
 import { servicoLinksAutenticacao } from '@/server/servicos/servico-links-autenticacao';
+import { registrarAuditoria } from '@/server/servicos/servico-auditoria';
 
 const usuarioSistemaSchema = z.object({
     nome: z.string().trim().min(2, "Nome é obrigatório").max(80),
@@ -28,57 +29,46 @@ export async function POST(req: Request) {
         }
 
         const data = parseResult.data;
-
-        if (typeof adminDb.collection !== 'function') {
-            return jsonErro("Admin DB indisponível no ambiente de Vercel/Node.", "FIREBASE_ADMIN_ERROR", 500);
-        }
-
         const emailLimpo = data.email;
 
-        // Criar usuário no Firebase Auth
-        const senhaGerada = Math.random().toString(36).slice(-10) + "S@";
-        let userRecord;
-        try {
-            userRecord = await adminAuth.createUser({
-                email: emailLimpo,
-                password: senhaGerada,
-                displayName: data.nome,
-            });
-        } catch (authError: any) {
-            if (authError.code === "auth/email-already-exists") {
-                return jsonErro("Este e-mail já está em uso.", "EMAIL_JA_EXISTE", 400);
-            }
-            throw authError;
+        // Verificar se já existe um usuário com esse email
+        const usuarioExistente = await prisma.usuario.findUnique({
+            where: { email: emailLimpo }
+        });
+
+        if (usuarioExistente) {
+            return jsonErro("Este e-mail já está em uso.", "EMAIL_JA_EXISTE", 400);
         }
 
-        const uid = userRecord.uid;
+        // 2. Criar perfil global como SISTEMA no PostgreSQL
+        // SUPERADMIN mapeia para saasAdmin no model unificado
+        const papelUnificado = "saasAdmin"; // Mapeamento simplificado. TODO: suportar suporte n1 e n2
+        
+        const senhaGerada = Math.random().toString(36).slice(-10) + "S@";
+        const senhaHash = await hashSenha(senhaGerada);
 
-        // Criar perfil global como SISTEMA
-        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
-        await usuarioGlobalRef.set({
-            uid: uid,
-            email: emailLimpo,
-            nome: data.nome,
-            papelPortal: "SISTEMA", // Importante para o root acesso
-            papelSistema: data.papel,
-            empresaId: null, // Usuários de sistema normalmente não têm tenant
-            ativo: true,
-            criadoEm: new Date(),
-            atualizadoEm: new Date()
+        const novoUsuario = await prisma.usuario.create({
+            data: {
+                email: emailLimpo,
+                nome: data.nome,
+                papel: papelUnificado,
+                empresaId: null, // saasAdmin não tem empresa
+                senhaHash,
+                mustResetPassword: true,
+                status: 'ativo'
+            }
         });
 
-        // Registrar auditoria
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        await auditoriaRef.set({
-            entidade: "USUARIO_SISTEMA",
-            acao: "CRIAR",
-            entidadeId: uid,
-            criadoPor: authResult.sessao.uid,
-            detalhes: `Usuário ${data.nome} criado com papel ${data.papel}`,
-            criadoEm: new Date()
-        });
+        // 3. Registrar auditoria
+        await registrarAuditoria({
+            usuarioId: authResult.sessao.uid,
+            acao: "usuario_sistema.criado",
+            entidade: "usuario",
+            entidadeId: novoUsuario.id,
+            detalhe: { nome: data.nome, papel: data.papel }
+        }).catch(() => null);
 
-        // Gerar link de primeiro acesso e disparar e-mail de criação de conta
+        // 4. Gerar link de primeiro acesso e disparar e-mail de criação de conta
         const isDev = process.env.NODE_ENV !== "production";
         let linkPrimeiroAcesso: string | undefined;
 
@@ -98,21 +88,19 @@ export async function POST(req: Request) {
                     });
 
                     if (!resultado.ok) {
-                        console.warn(`[CRIAR_USUARIO_SISTEMA] E-mail de criação não enviado para ${emailLimpo}:`, (resultado as any).error);
+                        console.warn(`[CRIAR_USUARIO_SISTEMA] E-mail não enviado para ${emailLimpo}:`, (resultado as any).error);
                         if (isDev) {
                             console.log(`\n📨 [DEV] LINK DE PRIMEIRO ACESSO para ${emailLimpo}:\n${linkPrimeiroAcesso}\n`);
                         }
                     }
                 }).catch(e => console.error("[CRIAR_USUARIO_SISTEMA] Erro assíncrono no envio de e-mail:", e));
-            } else {
-                console.warn(`[CRIAR_USUARIO_SISTEMA] Não foi possível gerar link para ${emailLimpo}`);
             }
         } catch (linkError) {
             console.warn("[CRIAR_USUARIO_SISTEMA] Falha ao gerar link de primeiro acesso:", linkError);
         }
 
         return jsonOk({
-            uid,
+            uid: novoUsuario.id,
             emailCriado: emailLimpo,
             ...(isDev && linkPrimeiroAcesso ? { linkPrimeiroAcesso } : {}),
         }, 201);

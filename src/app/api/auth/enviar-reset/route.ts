@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { servicoEmail } from "@/server/servicos/servico-email";
 import { servicoLinksAutenticacao } from "@/server/servicos/servico-links-autenticacao";
-import { repositorioAuditoriaAdmin } from "@/server/admin/repositorio-auditoria-admin";
+import { registrarAuditoria } from "@/server/servicos/servico-auditoria";
 
 const schema = z.object({
     email: z.string().email("E-mail inválido."),
@@ -30,12 +30,12 @@ export async function POST(req: Request) {
 
         const { email } = parsed.data;
 
-        // Gerar link via serviço centralizado
+        // Gerar link via serviço centralizado (PostgreSQL)
         const resultado = await servicoLinksAutenticacao.gerarLinkRedefinicaoSenha(email);
 
         // Se user-not-found → fingir sucesso (segurança)
         if (!resultado.ok && resultado.erro?.includes("Nenhum usuário")) {
-            console.info(`[ENVIAR_RESET] E-mail não encontrado no Auth: ${email}`);
+            console.info(`[ENVIAR_RESET] E-mail não encontrado no banco: ${email}`);
             return NextResponse.json({ ok: true }, { status: 200 });
         }
 
@@ -55,11 +55,13 @@ export async function POST(req: Request) {
         });
 
         // Registrar auditoria (não-bloqueante)
-        repositorioAuditoriaAdmin.registrarLog({
-            tipo: "PUBLICO_ENVIAR_RESET",
-            descricao: `Reset de senha solicitado para ${email}`,
-            metadata: { email, emailEnviado: emailResult.ok },
-        }).catch(console.error);
+        registrarAuditoria({
+            usuarioId: "PUBLICO",
+            acao: "auth.reset.solicitado",
+            entidade: "usuario",
+            entidadeId: email,
+            detalhe: { emailEnviado: emailResult.ok },
+        }).catch(() => null);
 
         // Fallback DEV: sem provedor → retornar debugLink
         const isDev = process.env.NODE_ENV !== "production";

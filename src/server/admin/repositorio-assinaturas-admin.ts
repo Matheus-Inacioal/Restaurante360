@@ -1,25 +1,29 @@
 import "server-only";
-import { adminDb } from "@/server/firebase/admin";
+import { prisma } from "@/lib/prisma";
 import { AssinaturaAsaas } from "@/lib/types/financeiro";
 
 export const repositorioAssinaturasAdmin = {
     async obterTotalAtivas(): Promise<number> {
-        const snap = await adminDb
-            .collection("financeiro_assinaturas")
-            .where("status", "==", "ACTIVE")
-            .count()
-            .get();
-        return snap.data().count;
+        return prisma.assinatura.count({
+            where: {
+                status: "ACTIVE"
+            }
+        });
     },
 
-    async obterPorEmpresa(empresaId: string): Promise<AssinaturaAsaas | null> {
-        const snap = await adminDb
-            .collection("financeiro_assinaturas")
-            .where("empresaId", "==", empresaId)
-            .limit(1)
-            .get();
+    async obterPorEmpresa(empresaId: string): Promise<any | null> {
+        const a = await prisma.assinatura.findFirst({
+            where: { empresaId }
+        });
 
-        if (snap.empty) return null;
-        return { id: snap.docs[0].id, ...snap.docs[0].data() } as AssinaturaAsaas;
+        if (!a) return null;
+        return {
+            id: a.id,
+            ...a,
+            proximoVencimento: a.proximoVencimento?.toISOString(),
+            inicioAssinatura: a.inicioAssinatura.toISOString(),
+            criadaEm: a.criadaEm.toISOString(),
+            atualizadaEm: a.atualizadaEm.toISOString(),
+        };
     },
 };

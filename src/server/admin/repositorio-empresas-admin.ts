@@ -1,53 +1,85 @@
 import "server-only";
-import { adminDb } from "@/server/firebase/admin";
+import { prisma } from "@/lib/prisma";
 import { EmpresaAtualizada } from "@/lib/types/financeiro";
 
 export const repositorioEmpresasAdmin = {
     async obterTotal(): Promise<number> {
-        const snap = await adminDb.collection("empresas").count().get();
-        return snap.data().count;
+        return prisma.empresa.count();
     },
 
-    async listar(limit: number = 10): Promise<EmpresaAtualizada[]> {
-        const snap = await adminDb
-            .collection("empresas")
-            .orderBy("criadoEm", "desc")
-            .limit(limit)
-            .get();
-
-        return snap.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as EmpresaAtualizada[];
+    async listar(limit: number = 10): Promise<any[]> {
+        const empresas = await prisma.empresa.findMany({
+            orderBy: { criadoEm: "desc" },
+            take: limit,
+        });
+        
+        return empresas.map(e => ({
+            id: e.id,
+            nomeEmpresa: e.nome,
+            cnpj: e.cnpj,
+            nomeResponsavel: e.responsavelNome,
+            emailResponsavel: e.responsavelEmail,
+            whatsappResponsavel: e.whatsappResponsavel,
+            status: e.status,
+            planoNome: e.planoNome,
+            diasTrial: e.diasTrial,
+            asaasCustomerId: e.asaasCustomerId,
+            criadoEm: e.criadoEm.toISOString(),
+            atualizadoEm: e.atualizadoEm.toISOString(),
+        }));
     },
 
-    async obterPorId(id: string): Promise<EmpresaAtualizada | null> {
-        const doc = await adminDb.collection("empresas").doc(id).get();
-        if (!doc.exists) return null;
-        return { id: doc.id, ...doc.data() } as EmpresaAtualizada;
+    async obterPorId(id: string): Promise<any | null> {
+        const e = await prisma.empresa.findUnique({ where: { id } });
+        if (!e) return null;
+        
+        return {
+            id: e.id,
+            nomeEmpresa: e.nome,
+            cnpj: e.cnpj,
+            nomeResponsavel: e.responsavelNome,
+            emailResponsavel: e.responsavelEmail,
+            whatsappResponsavel: e.whatsappResponsavel,
+            status: e.status,
+            planoNome: e.planoNome,
+            diasTrial: e.diasTrial,
+            asaasCustomerId: e.asaasCustomerId,
+            criadoEm: e.criadoEm.toISOString(),
+            atualizadoEm: e.atualizadoEm.toISOString(),
+        };
     },
 
-    async atualizar(id: string, dados: Partial<EmpresaAtualizada>): Promise<void> {
-        const atualizacao = { ...dados, atualizadoEm: new Date().toISOString() };
-        await adminDb.collection("empresas").doc(id).update(atualizacao);
+    async atualizar(id: string, dados: Partial<any>): Promise<void> {
+        await prisma.empresa.update({
+            where: { id },
+            data: {
+                nome: dados.nomeEmpresa,
+                responsavelNome: dados.nomeResponsavel,
+                responsavelEmail: dados.emailResponsavel,
+                whatsappResponsavel: dados.whatsappResponsavel,
+                status: dados.status,
+                // outos campos mapeados caso existam
+            }
+        });
     },
 
     async excluir(id: string): Promise<void> {
-        // Implementar soft-delete como solicitado (arquivada = true ou status cancelado)
-        await adminDb.collection("empresas").doc(id).update({
-            arquivada: true,
-            status: "CANCELADO",
-            atualizadoEm: new Date().toISOString(),
+        // Soft-delete
+        await prisma.empresa.update({
+            where: { id },
+            data: {
+                status: "CANCELADO",
+            }
         });
     },
 
     async listarPendencias(): Promise<number> {
-        // Empresas com status que indique pendência: SUSPENSO (e talvez INADIMPLENTE se existir no StatusEmpresa, ou GRACE)
-        const snap = await adminDb
-            .collection("empresas")
-            .where("status", "in", ["SUSPENSO", "GRACE"])
-            .count()
-            .get();
-        return snap.data().count;
+        return prisma.empresa.count({
+            where: {
+                status: {
+                    in: ["SUSPENSO", "GRACE"]
+                }
+            }
+        });
     },
 };

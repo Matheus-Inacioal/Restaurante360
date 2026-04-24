@@ -10,8 +10,7 @@
  * - 4 Usuários (1 por papel)
  * - 1 Categoria (Geral)
  *
- * IMPORTANTE: Os usuários também precisam existir no Firebase Auth.
- * O seed criará no PG e tentará criar via Firebase Admin SDK.
+ * IMPORTANTE: Totalmente isolado no PostgreSQL com Bcrypt. Nenhuma dependência do Firebase.
  *
  * COMO EXECUTAR:
  *   npx prisma db seed
@@ -24,7 +23,7 @@ dotenv.config({ path: ".env" });
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import pg from "pg";
-import * as admin from "firebase-admin";
+import bcrypt from "bcryptjs";
 
 // ─── Conexão com o banco ───────────────────────────────────────
 
@@ -32,58 +31,10 @@ const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-// ─── Firebase Admin (para criar usuários no Auth) ─────────────
-
-function inicializarFirebaseAdmin() {
-  if (admin.apps.length) return;
-
-  const projectId = process.env.FIREBASE_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
-
-  if (!projectId || !clientEmail || !privateKey) {
-    console.warn("⚠️  FIREBASE_* não configurado — usuários serão criados apenas no PostgreSQL.");
-    console.warn("   Crie os usuários manualmente no Firebase Auth com os emails abaixo.");
-    return;
-  }
-
-  admin.initializeApp({
-    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
-  });
-}
-
-/**
- * Cria um usuário no Firebase Auth ou retorna o existente.
- * Se o Firebase Admin não estiver configurado, retorna o uid fornecido como fallback.
- */
-async function garantirUsuarioAuth(uid: string, email: string, nome: string): Promise<string> {
-  if (!admin.apps.length) {
-    console.log(`   ⚠️  Sem Firebase Admin — usando uid fixo para ${email}: ${uid}`);
-    return uid;
-  }
-
-  try {
-    // Tenta buscar pelo e-mail primeiro
-    const existente = await admin.auth().getUserByEmail(email);
-    console.log(`   ♻️  Usuário já existe no Auth: ${email} (${existente.uid})`);
-    return existente.uid;
-  } catch {
-    // Não existe, criar
-    try {
-      const novo = await admin.auth().createUser({
-        uid,
-        email,
-        displayName: nome,
-        password: "Senha@123!", // Senha temporária — usuário deve alterar no primeiro acesso
-        emailVerified: false,
-      });
-      console.log(`   ✅ Usuário criado no Auth: ${email} (${novo.uid})`);
-      return novo.uid;
-    } catch (err: any) {
-      console.warn(`   ⚠️  Falha ao criar ${email} no Auth: ${err.message}`);
-      return uid;
-    }
-  }
+// ─── Hash de senha (bcrypt) ───────────────────────────────────
+async function hashSenha(senhaBase: string): Promise<string> {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(senhaBase, salt);
 }
 
 // ─── Dados do Seed ────────────────────────────────────────────
@@ -98,7 +49,7 @@ const IDS = {
   funcaoChef:    "seed-funcao-chef",
   funcaoGarcom:  "seed-funcao-garcom",
   categoria:     "seed-categoria-geral",
-  // UIDs dos usuários (serão usados no Firebase Auth também)
+  // UIDs dos usuários
   uidAdmin:      "seed-uid-admin",
   uidGestor:     "seed-uid-gestor",
   uidLocal:      "seed-uid-local",
@@ -109,10 +60,8 @@ const IDS = {
 
 async function main() {
   console.log("\n═══════════════════════════════════════════════");
-  console.log("🌱 SEED INICIAL — Restaurante360");
+  console.log("🌱 SEED INICIAL — Restaurante360 (PostgreSQL Only)");
   console.log("═══════════════════════════════════════════════\n");
-
-  inicializarFirebaseAdmin();
 
   // ── 1. Plano ─────────────────────────────────────────────────
   console.log("💎 Criando Plano...");
@@ -239,7 +188,7 @@ async function main() {
   console.log(`  ✅ Categoria: Geral\n`);
 
   // ── 7. Usuários ──────────────────────────────────────────────
-  console.log("👤 Criando Usuários (PostgreSQL + Firebase Auth)...");
+  console.log("👤 Criando Usuários (PostgreSQL + Bcrypt)...");
 
   const usuariosSeed = [
     {
@@ -284,13 +233,12 @@ async function main() {
     },
   ];
 
-  for (const u of usuariosSeed) {
-    // Garante existência no Firebase Auth
-    const uidFinal = await garantirUsuarioAuth(u.uid, u.email, u.nome);
+  const senhaPadrao = "Senha@123!";
+  const hash = await hashSenha(senhaPadrao);
 
-    // Cria/atualiza no PostgreSQL
+  for (const u of usuariosSeed) {
     await prisma.usuario.upsert({
-      where: { id: uidFinal },
+      where: { id: u.uid },
       update: {
         nome: u.nome,
         papel: u.papel,
@@ -299,10 +247,11 @@ async function main() {
         unidadeId: u.unidadeId,
         areaId: u.areaId,
         funcaoId: u.funcaoId,
+        senhaHash: hash,
         mustResetPassword: false,
       },
       create: {
-        id: uidFinal,
+        id: u.uid,
         email: u.email,
         nome: u.nome,
         papel: u.papel,
@@ -311,6 +260,7 @@ async function main() {
         unidadeId: u.unidadeId,
         areaId: u.areaId,
         funcaoId: u.funcaoId,
+        senhaHash: hash,
         mustResetPassword: false,
       },
     });
@@ -330,10 +280,10 @@ async function main() {
   console.log(`  Usuários:   ${await prisma.usuario.count()}`);
   console.log(`  Categorias: ${await prisma.categoria.count()}`);
 
-  console.log("\n🔑 CREDENCIAIS DE ACESSO (senha: Senha@123!)");
-  console.log("  admin@r360.com    → saasAdmin       → /sistema");
+  console.log(`\n🔑 CREDENCIAIS DE ACESSO (senha: ${senhaPadrao})`);
+  console.log("  admin@r360.com    → saasAdmin         → /sistema");
   console.log("  gestor@demo.com   → gestorCorporativo → /empresa");
-  console.log("  local@demo.com    → gestorLocal      → /unidade");
+  console.log("  local@demo.com    → gestorLocal       → /unidade");
   console.log("  operador@demo.com → operacional       → /operacional");
   console.log("\n🎉 Seed concluído com sucesso!");
 }

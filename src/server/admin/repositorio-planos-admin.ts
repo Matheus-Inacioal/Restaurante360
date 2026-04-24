@@ -1,23 +1,32 @@
 import "server-only";
-import { adminDb } from "@/server/firebase/admin";
+import { prisma } from "@/lib/prisma";
 import { Plano } from "@/lib/types/financeiro";
 
 export const repositorioPlanosAdmin = {
-    async listar(): Promise<Plano[]> {
-        const snap = await adminDb
-            .collection("planos")
-            .where("ativo", "==", true)
-            .get();
+    async listar(): Promise<any[]> {
+        const planos = await prisma.plano.findMany({
+            where: { ativo: true }
+        });
 
-        return snap.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-        })) as Plano[];
+        return planos.map(p => ({
+            id: p.id,
+            ...p,
+            criadoEm: p.criadoEm.toISOString(),
+            atualizadoEm: p.atualizadoEm.toISOString(),
+        }));
     },
 
-    async obterPorId(id: string): Promise<Plano | null> {
-        const doc = await adminDb.collection("planos").doc(id).get();
-        if (!doc.exists) return null;
-        return { id: doc.id, ...doc.data() } as Plano;
+    async obterPorId(id: string): Promise<any | null> {
+        const p = await prisma.plano.findUnique({
+            where: { id }
+        });
+        if (!p) return null;
+
+        return {
+            id: p.id,
+            ...p,
+            criadoEm: p.criadoEm.toISOString(),
+            atualizadoEm: p.atualizadoEm.toISOString(),
+        };
     },
 };

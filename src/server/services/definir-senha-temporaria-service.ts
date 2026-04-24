@@ -1,6 +1,7 @@
 import "server-only";
-import { adminDb, adminAuth } from '@/server/firebase/admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { prisma } from '@/lib/prisma';
+import { hashSenha } from '@/server/auth/senha';
+import { registrarAuditoria } from '@/server/servicos/servico-auditoria';
 
 export interface DefinirSenhaTemporariaInput {
     empresaId: string;
@@ -19,11 +20,12 @@ export async function definirSenhaTemporariaService(data: DefinirSenhaTemporaria
     try {
         const { empresaId, novaSenha, forcarTrocaSenha = true, executadoPorUid = "SISTEMA" } = data;
 
-        // 1. Buscar a empresa
-        const empresaRef = adminDb.collection('empresas').doc(empresaId);
-        const empresaDoc = await empresaRef.get();
+        // 1. Buscar a empresa para checar tenant
+        const empresa = await prisma.empresa.findUnique({
+            where: { id: empresaId }
+        });
 
-        if (!empresaDoc.exists) {
+        if (!empresa) {
             return {
                 ok: false,
                 code: "NOT_FOUND",
@@ -31,52 +33,43 @@ export async function definirSenhaTemporariaService(data: DefinirSenhaTemporaria
             };
         }
 
-        const empresaData = empresaDoc.data();
-        let targetUid = empresaData?.usuarioMasterUid;
-
-        // 2. Descobrir usuário master se não tiver na raiz da empresa
-        if (!targetUid) {
-            const usuariosSnap = await adminDb.collection('usuarios')
-                .where('empresaId', '==', empresaId)
-                .where('papelPortal', '==', 'EMPRESA')
-                .where('papelEmpresa', '==', 'GESTOR')
-                .where('ativo', '==', true)
-                .limit(1)
-                .get();
-
-            if (usuariosSnap.empty) {
-                return {
-                    ok: false,
-                    code: "NOT_FOUND",
-                    message: "Usuário master (Gestor) não encontrado para esta empresa."
-                };
+        // 2. Descobrir usuário master (gestorCorporativo) desta empresa
+        const gestor = await prisma.usuario.findFirst({
+            where: {
+                empresaId: empresaId,
+                papel: 'gestorCorporativo',
+                status: 'ativo'
             }
-            targetUid = usuariosSnap.docs[0].id;
-        }
-
-        // 3. Atualizar a senha no Firebase Auth
-        await adminAuth.updateUser(targetUid, {
-            password: novaSenha
         });
 
-        // 4. Se forcarTrocaSenha, atualizar perfil no Firestore
-        if (forcarTrocaSenha) {
-            await adminDb.collection('usuarios').doc(targetUid).update({
-                mustResetPassword: true,
-                atualizadoEm: FieldValue.serverTimestamp()
-            });
+        if (!gestor) {
+            return {
+                ok: false,
+                code: "NOT_FOUND",
+                message: "Usuário gestor não encontrado para esta empresa."
+            };
         }
 
-        // 5. Auditar a ação crítica
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        await auditoriaRef.set({
-            tipo: "SISTEMA_DEFINIU_SENHA_TEMPORARIA",
+        // 3. Atualizar a senha (hash com bcrypt) no PostgreSQL
+        const senhaHash = await hashSenha(novaSenha);
+
+        await prisma.usuario.update({
+            where: { id: gestor.id },
+            data: {
+                senhaHash,
+                mustResetPassword: forcarTrocaSenha
+            }
+        });
+
+        // 4. Auditar a ação crítica
+        await registrarAuditoria({
+            usuarioId: executadoPorUid,
+            acao: "usuario.senha.redefinida_admin",
+            entidade: "usuario",
+            entidadeId: gestor.id,
             empresaId: empresaId,
-            usuarioAlvoUid: targetUid,
-            executadoPorUid: executadoPorUid,
-            descricao: `Senha temporária redefinida manualmente. ForceReset: ${forcarTrocaSenha}`,
-            criadoEm: FieldValue.serverTimestamp()
-        });
+            detalhe: { forcarTrocaSenha, observacao: "SISTEMA_DEFINIU_SENHA_TEMPORARIA" }
+        }).catch(() => null);
 
         return {
             ok: true,

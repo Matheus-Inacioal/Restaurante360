@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
 import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
 
@@ -24,40 +22,13 @@ export async function POST(req: Request) {
         }
 
         const data = parseResult.data;
-        const empresaId = authResult.sessao.empresaId!;
-        const uid = authResult.sessao.uid;
 
-        const ticketRef = adminDb
-            .collection("empresas")
-            .doc(empresaId)
-            .collection("chamados")
-            .doc();
-
-        await ticketRef.set({
-            nome: data.nome,
-            email: data.email,
-            descricao: data.descricao,
-            status: 'aberto',
-            criadoPor: uid,
-            criadoEm: FieldValue.serverTimestamp(),
-            atualizadoEm: FieldValue.serverTimestamp()
-        });
-
-        // Audit log
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        await auditoriaRef.set({
-            empresaId: empresaId,
-            entidade: "CHAMADO_SUPORTE",
-            acao: "CRIAR",
-            entidadeId: ticketRef.id,
-            criadoPor: uid,
-            detalhes: `Novo chamado aberto por ${data.nome} (${data.email})`,
-            criadoEm: FieldValue.serverTimestamp()
-        });
+        // TODO: Enviar email para o suporte (ex: Resend)
+        console.log("[AJUDA] Chamado recebido:", data);
 
         return jsonOk({
             mensagem: "Seu chamado foi registrado com sucesso. Entraremos em contato em breve.",
-            id: ticketRef.id
+            id: "suporte-" + Date.now()
         }, 201);
 
     } catch (error: any) {

@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 import { garantirAcessoSistema } from '@/server/auth/garantirAcessoSistema';
+import { registrarAuditoria } from '@/server/servicos/servico-auditoria';
 import { z } from 'zod';
 
 const statusSchema = z.object({
-    status: z.enum(["ATIVO", "SUSPENSO", "CANCELADO", "TRIAL_ATIVO"])
+    status: z.enum(["ATIVO", "SUSPENSO", "CANCELADO", "TRIAL_ATIVO", "GRACE"])
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ empresaId: string }> }) {
@@ -25,31 +26,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ empres
             }, { status: 400 });
         }
 
-        const empresaRef = adminDb.collection("empresas").doc(empresaId);
-        const docSnap = await empresaRef.get();
-        if (!docSnap.exists) {
+        const empresa = await prisma.empresa.findUnique({
+            where: { id: empresaId }
+        });
+
+        if (!empresa) {
             return NextResponse.json({ ok: false, code: "NOT_FOUND", message: "Empresa não encontrada" }, { status: 404 });
         }
 
-        // Se estiver alterando para CANCELADO, podemos querer suspender a assinatura etc.
-        // Aqui atualizaremos os logs e a entidade mestre
-        const batch = adminDb.batch();
-        batch.update(empresaRef, {
-            status: parseResult.data.status,
-            atualizadoEm: new Date()
+        await prisma.empresa.update({
+            where: { id: empresaId },
+            data: {
+                status: parseResult.data.status,
+            }
         });
 
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        batch.set(auditoriaRef, {
+        await registrarAuditoria({
             empresaId: empresaId,
-            entidade: "EMPRESA",
+            entidade: "empresa",
             entidadeId: empresaId,
-            acao: `STATUS_ALTERADO_PARA_${parseResult.data.status}`,
-            criadoPor: authResult.sessao.uid,
-            criadoEm: new Date()
-        });
-
-        await batch.commit();
+            acao: "empresa.status.alterado",
+            usuarioId: authResult.sessao.uid,
+            detalhe: { novoStatus: parseResult.data.status },
+        }).catch(() => null);
 
         return NextResponse.json({ ok: true, data: { status: parseResult.data.status } }, { status: 200 });
 
