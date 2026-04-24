@@ -1,4 +1,10 @@
-import { auth } from "@/lib/firebase/client";
+/**
+ * fetchJSON — Utilitário HTTP para chamadas API (Restaurante360)
+ *
+ * Realiza chamadas fetch com padronização de respostas.
+ * Autenticação é gerenciada automaticamente pelo cookie httpOnly (JWT),
+ * sem necessidade de injetar tokens manualmente.
+ */
 
 export type ApiErrorCode =
     | "VALIDATION_ERROR"
@@ -35,9 +41,9 @@ export class FetchJsonError extends Error {
     }
 }
 
-/** Opções estendidas para fetchJSON com controle de autenticação */
+/** Opções estendidas para fetchJSON */
 export type OpcoesFetchJSON = RequestInit & {
-    /** Se false, não envia o header Authorization. Padrão: true */
+    /** Se false, não envia credenciais (cookies). Padrão: true */
     autenticar?: boolean;
 };
 
@@ -63,11 +69,10 @@ function mapStatusToCode(status: number): ApiErrorCode {
 
 /**
  * Utilitário para realizar chamadas API garantindo o padrão de respostas.
- * 
- * Por padrão, injeta automaticamente:
- * - `Authorization: Bearer <idToken>` (forçando refresh do token para garantir custom claims)
- * - `Content-Type: application/json` (quando houver body)
- * 
+ *
+ * A autenticação é gerenciada pelo cookie httpOnly (sessão JWT).
+ * O browser envia o cookie automaticamente com `credentials: 'same-origin'`.
+ *
  * Para rotas públicas, passe `{ autenticar: false }`.
  */
 export async function fetchJSON<T>(
@@ -79,27 +84,16 @@ export async function fetchJSON<T>(
     // Montar headers a partir dos existentes
     const headers = new Headers(init.headers);
 
-    // Injetar Authorization automaticamente se autenticar !== false
-    if (autenticar) {
-        const usuario = auth.currentUser;
-        if (!usuario) {
-            throw new FetchJsonError(
-                "Não autorizado. Usuário não autenticado.",
-                "UNAUTHORIZED",
-                401
-            );
-        }
-        // forceRefresh = true para garantir que custom claims estejam atualizadas
-        const token = await usuario.getIdToken(true);
-        headers.set("Authorization", `Bearer ${token}`);
-    }
-
     // Garantir Content-Type quando houver body
     if (init.body && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetch(input, { ...init, headers });
+    const res = await fetch(input, {
+        ...init,
+        headers,
+        credentials: autenticar ? "same-origin" : "omit",
+    });
 
     if (res.status === 204) {
         // Para rotas sem conteúdo, assumimos sucesso genérico sem data

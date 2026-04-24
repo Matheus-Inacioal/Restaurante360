@@ -21,8 +21,7 @@ import { Input } from '@/components/ui/input';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { User } from '@/lib/types';
 import Link from 'next/link';
-import { useAuth } from '@/firebase';
-import { signOut } from 'firebase/auth';
+import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { BuscaGlobal } from '@/components/topbar/busca-global';
 import { Notificacoes } from '@/components/topbar/notificacoes';
@@ -39,12 +38,12 @@ export function Header({ user, title, configUrl }: HeaderProps) {
     .map((n) => n[0])
     .join('');
 
-  const auth = useAuth();
+  const { logout } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
-    await signOut(auth);
-    router.push('/');
+    await logout();
+    router.push('/login');
   }
 
   return (

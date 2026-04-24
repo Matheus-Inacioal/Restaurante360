@@ -5,12 +5,11 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { PapelUsuario, StatusAtivo } from "@/lib/tipos/identidade";
-import { Prisma } from "@prisma/client";
 
 // ─── Tipos de entrada ─────────────────────────────────────────
 
 export interface DadosCriarUsuario {
-  id: string;           // UID do Firebase Auth
+  id?: string;          // Opcional — se não informado, o Prisma gera via cuid()
   email: string;
   nome: string;
   papel: PapelUsuario;
@@ -18,6 +17,7 @@ export interface DadosCriarUsuario {
   unidadeId?: string;
   areaId?: string;
   funcaoId?: string;
+  senhaHash?: string;
   mustResetPassword?: boolean;
 }
 
@@ -28,6 +28,7 @@ export interface DadosAtualizarUsuario {
   areaId?: string | null;
   funcaoId?: string | null;
   status?: StatusAtivo;
+  senhaHash?: string;
   mustResetPassword?: boolean;
 }
 
@@ -35,11 +36,11 @@ export interface DadosAtualizarUsuario {
 
 export const repositorioUsuariosPg = {
 
-  /** Cria um novo usuário vinculado ao Firebase Auth UID */
+  /** Cria um novo usuário no PostgreSQL */
   async criar(dados: DadosCriarUsuario) {
     return prisma.usuario.create({
       data: {
-        id: dados.id,
+        ...(dados.id ? { id: dados.id } : {}),
         email: dados.email,
         nome: dados.nome,
         papel: dados.papel,
@@ -47,12 +48,13 @@ export const repositorioUsuariosPg = {
         unidadeId: dados.unidadeId ?? null,
         areaId: dados.areaId ?? null,
         funcaoId: dados.funcaoId ?? null,
+        senhaHash: dados.senhaHash ?? null,
         mustResetPassword: dados.mustResetPassword ?? false,
       },
     });
   },
 
-  /** Busca perfil completo pelo UID do Firebase */
+  /** Busca perfil completo pelo ID */
   async obterPorId(uid: string) {
     return prisma.usuario.findUnique({
       where: { id: uid },
@@ -65,10 +67,24 @@ export const repositorioUsuariosPg = {
     });
   },
 
-  /** Busca usuário pelo e-mail */
+  /** Busca usuário pelo e-mail (dados básicos, sem senha) */
   async obterPorEmail(email: string) {
     return prisma.usuario.findUnique({
       where: { email },
+    });
+  },
+
+  /**
+   * Busca usuário pelo e-mail com todos os dados necessários para login.
+   * Inclui senhaHash e relações de empresa/unidade.
+   */
+  async obterPorEmailCompleto(email: string) {
+    return prisma.usuario.findUnique({
+      where: { email },
+      include: {
+        empresa: { select: { id: true, nome: true, status: true } },
+        unidade: { select: { id: true, nome: true } },
+      },
     });
   },
 
@@ -122,6 +138,21 @@ export const repositorioUsuariosPg = {
     return prisma.usuario.update({
       where: { id: uid },
       data: { ultimoAcessoEm: new Date() },
+    });
+  },
+
+  /** Atualiza a senha hash de um usuário */
+  async atualizarSenha(uid: string, senhaHash: string) {
+    return prisma.usuario.update({
+      where: { id: uid },
+      data: { senhaHash, mustResetPassword: false },
+    });
+  },
+
+  /** Conta total de usuários do sistema (saasAdmin) */
+  async contarAdminsSistema() {
+    return prisma.usuario.count({
+      where: { papel: "saasAdmin" },
     });
   },
 };

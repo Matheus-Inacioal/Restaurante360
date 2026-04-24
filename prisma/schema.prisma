@@ -189,11 +189,14 @@ model Funcao {
 // ─────────────────────────────────────────────────────────────
 
 model Usuario {
-  id           String      @id // = UID do Firebase Auth
+  id           String      @id @default(cuid())
   email        String      @unique
   nome         String
   papel        PapelUsuario
   status       StatusAtivo  @default(ativo)
+
+  // Autenticação local (bcrypt) — null = convite pendente/sem senha definida
+  senhaHash    String?
 
   // Vínculo com empresa (obrigatório para todos exceto saasAdmin)
   empresaId    String?
@@ -212,17 +215,35 @@ model Usuario {
   ultimoAcessoEm DateTime?
 
   // Relações
-  empresa           Empresa?       @relation(fields: [empresaId], references: [id])
-  unidade           Unidade?       @relation(fields: [unidadeId], references: [id])
-  area              Area?          @relation(fields: [areaId], references: [id])
-  funcao            Funcao?        @relation(fields: [funcaoId], references: [id])
-  auditoria         Auditoria[]
-  tarefasCriadas    Tarefa[]       @relation("TarefaCriador")
-  tarefasResponsavel Tarefa[]      @relation("TarefaResponsavel")
-  rotinasCriadas    Rotina[]       @relation("RotinaCriador")
-  notificacoes      Notificacao[]
+  empresa            Empresa?          @relation(fields: [empresaId], references: [id])
+  unidade            Unidade?          @relation(fields: [unidadeId], references: [id])
+  area               Area?             @relation(fields: [areaId], references: [id])
+  funcao             Funcao?           @relation(fields: [funcaoId], references: [id])
+  auditoria          Auditoria[]
+  tarefasCriadas     Tarefa[]          @relation("TarefaCriador")
+  tarefasResponsavel Tarefa[]          @relation("TarefaResponsavel")
+  rotinasCriadas     Rotina[]          @relation("RotinaCriador")
+  notificacoes       Notificacao[]
+  tokensResetSenha   TokenResetSenha[]
 
   @@map("usuarios")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TOKENS DE REDEFINIÇÃO DE SENHA
+// ─────────────────────────────────────────────────────────────
+
+model TokenResetSenha {
+  id          String   @id @default(cuid())
+  usuarioId   String
+  token       String   @unique
+  expiraEm    DateTime
+  usado       Boolean  @default(false)
+  criadoEm    DateTime @default(now())
+
+  usuario     Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("tokens_reset_senha")
 }
 
 // ─────────────────────────────────────────────────────────────

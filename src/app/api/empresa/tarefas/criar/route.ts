@@ -1,81 +1,74 @@
+/**
+ * POST /api/empresa/tarefas/criar
+ *
+ * Cria uma nova tarefa para a empresa autenticada.
+ * Requer: gestorCorporativo ou gestorLocal
+ */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
-import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
 import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { repositorioTarefasPg } from '@/server/repositorios/repositorio-tarefas-pg';
+import { registrarAuditoria } from '@/server/servicos/servico-auditoria';
 
-const formSchema = z.object({
-    title: z.string().min(3, 'O título deve ter pelo menos 3 caracteres.'),
-    description: z.string().optional(),
-    assignedTo: z.string().min(1, 'Você deve selecionar um colaborador.'),
-    shift: z.enum(['Manhã', 'Tarde', 'Noite']),
-    dateStr: z.string(), // date string yyyy-MM-dd
-    requiresPhoto: z.boolean(),
+const esquemaTarefa = z.object({
+  titulo: z.string().min(1, 'Título é obrigatório.'),
+  descricao: z.string().optional(),
+  tipo: z.enum(['tarefa', 'checklist']).default('tarefa'),
+  prioridade: z.enum(['Alta', 'Media', 'Baixa']).default('Media'),
+  responsavelId: z.string().optional(),
+  prazo: z.string().optional(), // ISO date string
+  tags: z.array(z.string()).optional(),
+  itensVerificacao: z.any().optional(),
 });
 
 export async function POST(req: Request) {
-    try {
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+  const acesso = await garantirAcessoEmpresa(req);
+  if (acesso instanceof Response) return acesso;
 
-        const body = await req.json();
-        const parseResult = formSchema.safeParse(body);
+  try {
+    const body = await req.json();
+    const parse = esquemaTarefa.safeParse(body);
 
-        if (!parseResult.success) {
-            return mapearZodError(parseResult.error);
-        }
-
-        const data = parseResult.data;
-        const empresaId = authResult.sessao.empresaId!;
-        const uid = authResult.sessao.uid;
-
-        const collectionRef = adminDb.collection("empresas").doc(empresaId).collection("checklists");
-        const docRef = collectionRef.doc();
-
-        const singleTask = {
-            id: adminDb.collection("empresas").doc().id, // Random id for the sub-task
-            activityTemplateId: 'one-off',
-            title: data.title,
-            description: data.description || '',
-            requiresPhoto: data.requiresPhoto,
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        };
-
-        const checklistData = {
-            date: data.dateStr,
-            shift: data.shift,
-            assignedTo: data.assignedTo,
-            processName: `Tarefa Pontual: ${data.title}`,
-            status: 'open',
-            tasks: [singleTask],
-            createdBy: uid,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        await docRef.set(checklistData);
-
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        await auditoriaRef.set({
-            empresaId: empresaId,
-            entidade: "TAREFA_AVULSA",
-            acao: "CRIAR",
-            entidadeId: docRef.id,
-            criadoPor: uid,
-            detalhes: `Tarefa pontual '${data.title}' atribuída ao colaborador ${data.assignedTo}`,
-            criadoEm: FieldValue.serverTimestamp()
-        });
-
-        return jsonOk({
-            id: docRef.id,
-            mensagem: `Tarefa pontual atribuída com sucesso.`
-        }, 201);
-
-    } catch (error: any) {
-        console.error("[CRIAR_TAREFA_AVULSA] Erro:", error);
-        return jsonErro("Falha interna ao criar tarefa pontual.", "INTERNAL_ERROR", 500);
+    if (!parse.success) {
+      return NextResponse.json(
+        { ok: false, code: 'VALIDATION_ERROR', errors: parse.error.flatten() },
+        { status: 400 }
+      );
     }
+
+    const dados = parse.data;
+    const empresaId = acesso.empresaId;
+    const uid = acesso.sessao.uid;
+
+    const tarefa = await repositorioTarefasPg.criar({
+      empresaId,
+      titulo: dados.titulo,
+      descricao: dados.descricao,
+      tipo: dados.tipo,
+      prioridade: dados.prioridade,
+      responsavelId: dados.responsavelId,
+      prazo: dados.prazo ? new Date(dados.prazo) : null,
+      tags: dados.tags,
+      itensVerificacao: dados.itensVerificacao,
+      criadoPor: uid,
+    });
+
+    // Auditoria não-bloqueante
+    registrarAuditoria({
+      usuarioId: uid,
+      acao: 'tarefa.criada',
+      entidade: 'tarefa',
+      entidadeId: tarefa.id,
+      empresaId,
+      detalhe: { titulo: tarefa.titulo },
+    }).catch(() => null);
+
+    return NextResponse.json({ ok: true, data: tarefa }, { status: 201 });
+  } catch (error: any) {
+    console.error('[POST /api/empresa/tarefas/criar] Erro:', error);
+    return NextResponse.json(
+      { ok: false, code: 'INTERNAL_ERROR', message: 'Erro ao criar tarefa.' },
+      { status: 500 }
+    );
+  }
 }

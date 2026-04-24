@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, ShieldExclamation } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,17 +13,17 @@ import { fetchJSON } from "@/lib/http/fetch-json";
 
 export default function AlterarSenhaPage() {
     const router = useRouter();
-    const { usuarioAuth, carregandoAuth } = useAuth();
+    const { usuarioLogado, carregandoAuth } = useAuth();
 
     const [novasSenhas, setNovasSenhas] = useState({ senha: "", confirmaSenha: "" });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        // Redireciona se não houver um usuário parcialmente autenticado
-        if (!carregandoAuth && !usuarioAuth) {
+        // Redireciona se não houver um usuário autenticado
+        if (!carregandoAuth && !usuarioLogado) {
             router.replace("/login");
         }
-    }, [usuarioAuth, carregandoAuth, router]);
+    }, [usuarioLogado, carregandoAuth, router]);
 
     const handleChangePassword = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,10 +54,7 @@ export default function AlterarSenhaPage() {
                     description: "Sua senha foi atualizada com sucesso. Você será redirecionado para a plataforma."
                 });
 
-                // Força um pequeno atraso do NextRouter
                 setTimeout(() => {
-                    // Após a remoção do flag `mustResetPassword` no server, o front pode pedir o refresh da role ou ir pro dashboard
-                    // Redirecionando pro painel raiz do gateway - ele o jogará pra home pertinente (.replace("/") repete cálculo de rotas no layout se houver)
                     window.location.href = "/";
                 }, 1500);
             }
@@ -71,14 +68,14 @@ export default function AlterarSenhaPage() {
         return <div className="min-h-screen flex items-center justify-center bg-muted/20"><Loader2 className="animate-spin text-primary" /></div>;
     }
 
-    if (!usuarioAuth) return null; // Será interceptado pelo useEffect
+    if (!usuarioLogado) return null;
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">
             <Card className="w-full max-w-md shadow-lg border-muted">
                 <CardHeader className="space-y-1 text-center pb-6">
                     <div className="mx-auto bg-warning/10 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-warning">
-                        <ShieldExclamation className="h-6 w-6" />
+                        <ShieldAlert className="h-6 w-6" />
                     </div>
                     <CardTitle className="text-xl font-bold tracking-tight">Redefinição Obrigatória</CardTitle>
                     <CardDescription className="px-2">

@@ -1,11 +1,10 @@
 import 'server-only';
-import { adminAuth } from '@/server/firebase/admin';
+import { cookies } from 'next/headers';
+import { verificarToken, COOKIE_SESSAO, type PayloadSessao } from './jwt';
 import type { PapelUsuario } from '@/lib/tipos/identidade';
 
 /**
- * Sessão do usuário extraída do ID Token do Firebase Auth.
- * As custom claims (papel, empresaId, unidadeId) são definidas
- * via Firebase Admin após criação/atualização do usuário.
+ * Sessão do usuário extraída do JWT (cookie httpOnly ou header Authorization).
  */
 export type SessaoUsuario = {
   uid: string;
@@ -16,28 +15,52 @@ export type SessaoUsuario = {
 };
 
 /**
- * Extrai e valida a sessão a partir do Bearer Token no header Authorization.
- * Retorna null se o token for inválido ou ausente.
+ * Extrai e valida a sessão do usuário.
+ *
+ * Prioridade:
+ * 1. Cookie httpOnly `r360_sessao` (fluxo padrão do browser)
+ * 2. Header `Authorization: Bearer <jwt>` (para chamadas programáticas)
+ *
+ * Retorna null se o token for inválido, expirado ou ausente.
  */
-export async function obterSessao(req: Request): Promise<SessaoUsuario | null> {
+export async function obterSessao(req?: Request): Promise<SessaoUsuario | null> {
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
+    let token: string | undefined;
+
+    // 1. Tentar cookie (Next.js server-side)
+    try {
+      const cookieStore = await cookies();
+      token = cookieStore.get(COOKIE_SESSAO)?.value;
+    } catch {
+      // cookies() pode falhar fora de contexto de request (ex: middleware)
+    }
+
+    // 2. Fallback para header Authorization (se req disponível)
+    if (!token && req) {
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.split('Bearer ')[1];
+      }
+    }
+
+    if (!token) {
       return null;
     }
 
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    const payload = await verificarToken(token);
+    if (!payload) {
+      return null;
+    }
 
     return {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      papel: decodedToken.papel as PapelUsuario | undefined,
-      empresaId: decodedToken.empresaId,
-      unidadeId: decodedToken.unidadeId,
+      uid: payload.uid,
+      email: payload.email,
+      papel: payload.papel as PapelUsuario | undefined,
+      empresaId: payload.empresaId,
+      unidadeId: payload.unidadeId,
     };
   } catch (error) {
-    console.error('[obterSessao] Erro ao verificar token:', error);
+    console.error('[obterSessao] Erro ao verificar sessão:', error);
     return null;
   }
 }

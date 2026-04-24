@@ -9,14 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { fetchJSON } from "@/lib/http/fetch-json";
 import { calcularRotaInicial } from "@/lib/redirecionamento";
 import type { PerfilUsuario } from "@/lib/tipos/identidade";
 import { DialogEsqueciSenha } from "@/components/auth/DialogEsqueciSenha";
 
 export default function LoginPage() {
     const router = useRouter();
-    const { entrarComEmailSenha, logout } = useAuth();
+    const { entrarComEmailSenha } = useAuth();
 
     const [credenciais, setCredenciais] = useState({ email: "", senha: "" });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,46 +39,24 @@ export default function LoginPage() {
             return;
         }
 
-        const uid = result.uid;
+        const perfil = result.perfil;
 
-        try {
-            // Busca perfil do PostgreSQL via API (autenticado com Bearer Token Firebase)
-            const resPostal = await fetchJSON<PerfilUsuario>('/api/auth/perfil');
-
-            if (!resPostal.ok) {
-                await logout();
-                const msg = 'message' in resPostal ? resPostal.message : 'Perfil não encontrado.';
-                toast({ title: "Acesso Restrito", description: msg, variant: "destructive" });
-                setIsSubmitting(false);
-                return;
-            }
-
-            const perfil = resPostal.data;
-
-            if (perfil.status === 'inativo') {
-                await logout();
-                toast({ title: "Acesso Negado", description: "Usuário desativado. Contate o administrador.", variant: "destructive" });
-                setIsSubmitting(false);
-                return;
-            }
-
-            if (perfil.mustResetPassword === true) {
-                console.info("LOGIN_SUCCESS: Usuário forçado a redefinir a senha provisória.");
-                router.replace("/login/alterar-senha");
-                return;
-            }
-
-            // Redireciona para o portal correto baseado no papel
-            const url = calcularRotaInicial(perfil);
-            console.info(`LOGIN_SUCCESS: Redirecionando para ${url} (papel: ${perfil.papel})`);
-            router.replace(url);
-
-        } catch (error: any) {
-            console.error("Erro interno ao validar Perfil:", error);
-            await logout();
-            toast({ title: "Erro Inesperado", description: "Falha ao validar permissões de usuário.", variant: "destructive" });
+        if (perfil.status === 'inativo') {
+            toast({ title: "Acesso Negado", description: "Usuário desativado. Contate o administrador.", variant: "destructive" });
             setIsSubmitting(false);
+            return;
         }
+
+        if (perfil.mustResetPassword === true) {
+            console.info("LOGIN_SUCCESS: Usuário forçado a redefinir a senha provisória.");
+            router.replace("/login/alterar-senha");
+            return;
+        }
+
+        // Redireciona para o portal correto baseado no papel
+        const url = calcularRotaInicial(perfil);
+        console.info(`LOGIN_SUCCESS: Redirecionando para ${url} (papel: ${perfil.papel})`);
+        router.replace(url);
     };
 
     return (
