@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MoreHorizontal, PlusCircle, Workflow } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,25 +24,41 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Process } from '@/lib/types';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection } from 'firebase/firestore';
+
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ProcessForm } from '@/components/manager/process-form';
 
 
 export default function ProcessesPage() {
-    const { firestore } = useFirebase();
+    const [processes, setProcesses] = useState<Process[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [isSheetOpen, setIsSheetOpen] = useState(false);
-    
-    const processesColRef = useMemoFirebase(() =>
-        firestore ? collection(firestore, 'processes') : null,
-        [firestore]
-    );
 
-    const { data: processes, isLoading } = useCollection<Process>(processesColRef);
+    useEffect(() => {
+        const fetchProcesses = async () => {
+            try {
+                const res = await fetch('/api/empresa/processos');
+                const data = await res.json();
+                if (res.ok && data.sucesso) {
+                    setProcesses(data.processos);
+                }
+            } catch (err) {
+                console.error("Erro ao buscar processos:", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        fetchProcesses();
+    }, []);
 
     const handleFormSuccess = () => {
         setIsSheetOpen(false);
+        // Atualiza a lista
+        fetch('/api/empresa/processos')
+            .then(res => res.json())
+            .then(data => {
+                if (data.sucesso) setProcesses(data.processos);
+            });
     };
 
     const handleAddNew = () => {

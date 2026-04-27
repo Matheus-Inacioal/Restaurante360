@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { obterSessao } from '@/server/auth/obterSessao';
 
 const atribuirChecklistSchema = z.object({
     processId: z.string().min(1),
@@ -12,7 +11,7 @@ const atribuirChecklistSchema = z.object({
     shift: z.enum(['Manhã', 'Tarde', 'Noite']),
     dateStr: z.string().min(1), // format YYYY-MM-DD
     tasks: z.array(z.object({
-        activityTemplateId: z.string(),
+        activityTemplateId: z.string().optional(),
         title: z.string(),
         description: z.string().optional(),
         requiresPhoto: z.boolean()
@@ -21,8 +20,10 @@ const atribuirChecklistSchema = z.object({
 
 export async function POST(req: Request) {
     try {
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+        const authResult = await obterSessao();
+        if (!authResult) {
+            return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+        }
 
         const body = await req.json();
         const parseResult = atribuirChecklistSchema.safeParse(body);
@@ -32,50 +33,52 @@ export async function POST(req: Request) {
         }
 
         const data = parseResult.data;
-        const empresaId = authResult.sessao.empresaId!;
-        const uid = authResult.sessao.uid;
+        const empresaId = authResult.empresaId;
+        const uid = authResult.uid;
 
-        // Criar o checklist associado à empresa
-        const checklistRef = adminDb.collection("empresas").doc(empresaId).collection("checklists").doc();
+        if (!empresaId) {
+            return jsonErro("Usuário sem empresa vinculada.", "FORBIDDEN", 403);
+        }
 
-        const tasksComId = data.tasks.map(t => ({
-            id: adminDb.collection("empresas").doc(empresaId).collection("checklists").doc().id, // gera um id falso
-            activityTemplateId: t.activityTemplateId,
-            title: t.title,
-            description: t.description || '',
-            requiresPhoto: t.requiresPhoto,
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        }));
+        const dateObj = new Date(data.dateStr + "T00:00:00.000Z"); // Força meia noite UTC ou local
 
-        await checklistRef.set({
-            date: data.dateStr,
-            shift: data.shift,
-            assignedTo: data.assignedTo,
-            processName: data.processName,
-            processId: data.processId,
-            status: 'open',
-            tasks: tasksComId,
-            createdBy: uid,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-        });
+        const resultado = await prisma.$transaction(async (tx) => {
+            const checklist = await tx.checklist.create({
+                data: {
+                    empresaId,
+                    nome: data.processName,
+                    processoId: data.processId,
+                    responsavelId: data.assignedTo,
+                    turno: data.shift,
+                    data: dateObj,
+                    status: 'pendente',
+                    tarefas: {
+                        create: data.tasks.map(t => ({
+                            titulo: t.title,
+                            descricao: t.description,
+                            exigeFoto: t.requiresPhoto,
+                            status: 'pendente'
+                        }))
+                    }
+                }
+            });
 
-        // Registrar auditoria
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        await auditoriaRef.set({
-            empresaId: empresaId,
-            entidade: "CHECKLIST",
-            acao: "ATRIBUIR",
-            entidadeId: checklistRef.id,
-            criadoPor: uid,
-            detalhes: `Rotina '${data.processName}' atribuída ao colaborador ${data.assignedTo}`,
-            criadoEm: FieldValue.serverTimestamp()
+            await tx.auditoria.create({
+                data: {
+                    empresaId,
+                    usuarioId: uid,
+                    acao: "CHECKLIST_ATRIBUIR",
+                    entidade: "checklist",
+                    entidadeId: checklist.id,
+                    detalhe: { nome: data.processName, responsavelId: data.assignedTo }
+                }
+            });
+
+            return checklist;
         });
 
         return jsonOk({
-            checklistId: checklistRef.id
+            checklistId: resultado.id
         }, 201);
 
     } catch (error: any) {

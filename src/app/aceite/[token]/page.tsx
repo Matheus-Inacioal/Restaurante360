@@ -10,15 +10,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { useFirebase } from '@/firebase/provider';
-import { repositorioAceitesFirestore } from '@/lib/repositories/repositorio-aceites-firestore';
-import { repositorioEmpresasFirestore } from '@/lib/repositories/repositorio-empresas-firestore';
 import { AceiteAssinatura, EmpresaAtualizada } from '@/lib/types/financeiro';
 
 export default function PaginaAceite({ params }: { params: { token: string } }) {
     const router = useRouter();
     const { toast } = useToast();
-    const { firestore } = useFirebase();
 
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,16 +28,14 @@ export default function PaginaAceite({ params }: { params: { token: string } }) 
 
     useEffect(() => {
         const carregarDados = async () => {
-            if (!firestore) return;
-
             try {
-                const aceiteBuscado = await repositorioAceitesFirestore.obterPorId(firestore, params.token);
+                const res = await fetch(`/api/asaas/aceite/${params.token}`);
+                const data = await res.json();
 
-                if (aceiteBuscado) {
-                    setAceite(aceiteBuscado);
-                    if (aceiteBuscado.status === 'PENDENTE') {
-                        const empresaBuscada = await repositorioEmpresasFirestore.obterPorId(firestore, aceiteBuscado.empresaId);
-                        setEmpresa(empresaBuscada);
+                if (res.ok && data.sucesso && data.aceite) {
+                    setAceite(data.aceite);
+                    if (data.empresa) {
+                        setEmpresa(data.empresa);
                     }
                 }
             } catch (error) {
@@ -52,7 +46,7 @@ export default function PaginaAceite({ params }: { params: { token: string } }) 
         };
 
         carregarDados();
-    }, [firestore, params.token]);
+    }, [params.token]);
 
     if (isLoading) {
         return <div className="flex min-h-screen items-center justify-center p-4 bg-muted/20"><p>Validando link de segurança...</p></div>;

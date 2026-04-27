@@ -23,8 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useCollection, useFirebase, useUser, useMemoFirebase } from '@/firebase';
-import { collection, query, where, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Image from 'next/image';
@@ -34,8 +33,9 @@ interface EnrichedTask extends TaskInstance {
 }
 
 export default function TasksPage() {
-  const { firestore } = useFirebase();
-  const { user } = useUser();
+  const [checklists, setChecklists] = useState<ChecklistInstance[]>([]);
+  const [isLoadingChecklists, setIsLoadingChecklists] = useState(true);
+  
   const { toast } = useToast();
   const [isPhotoUploadOpen, setIsPhotoUploadOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<EnrichedTask | null>(null);
@@ -46,17 +46,22 @@ export default function TasksPage() {
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const checklistsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    return query(
-      collection(firestore, 'checklists'),
-      where('assignedTo', '==', user.uid),
-      where('date', '==', todayStr)
-    );
-  }, [firestore, user]);
-
-  const { data: checklists, isLoading: isLoadingChecklists } = useCollection<ChecklistInstance>(checklistsQuery);
+  useEffect(() => {
+      const fetchTasks = async () => {
+          try {
+              const res = await fetch('/api/operacional/tarefas');
+              const data = await res.json();
+              if (res.ok && data.sucesso) {
+                  setChecklists(data.checklists);
+              }
+          } catch (err) {
+              console.error("Erro ao buscar tarefas:", err);
+          } finally {
+              setIsLoadingChecklists(false);
+          }
+      };
+      fetchTasks();
+  }, []);
 
   const allTasks: EnrichedTask[] = useMemo(() => {
     if (!checklists) return [];

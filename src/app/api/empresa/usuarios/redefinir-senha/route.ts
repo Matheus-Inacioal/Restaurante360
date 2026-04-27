@@ -10,13 +10,10 @@
  * - E-mail pertence a um colaborador da mesma empresa
  */
 import { z } from 'zod';
-import { adminAuth } from '@/server/firebase/admin';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
-import { repositorioUsuariosPg } from '@/server/repositorios/repositorio-usuarios-pg';
-import { servicoLinksAutenticacao } from '@/server/servicos/servico-links-autenticacao';
-import { servicoEmail } from '@/server/servicos/servico-email';
+import { obterSessao } from '@/server/auth/obterSessao';
 import { prisma } from '@/lib/prisma';
+import crypto from 'crypto';
 
 const redefinirSenhaSchema = z.object({
   emailColaborador: z.string().trim().toLowerCase().email('E-mail inválido.'),
@@ -24,14 +21,16 @@ const redefinirSenhaSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const authResult = await garantirAcessoEmpresa(req);
-    if (authResult instanceof Response) return authResult;
+    const authResult = await obterSessao();
+    if (!authResult) {
+      return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+    }
 
-    const { sessao, empresaId } = authResult;
+    const { uid, papel, empresaId } = authResult;
 
     // Apenas gestores podem redefinir senhas
     const papelPermitido =
-      sessao.papel === 'gestorCorporativo' || sessao.papel === 'gestorLocal';
+      papel === 'gestorCorporativo' || papel === 'gestorLocal';
     if (!papelPermitido) {
       return jsonErro('Apenas gestores podem redefinir senhas de colaboradores.', 'FORBIDDEN', 403);
     }
@@ -42,64 +41,50 @@ export async function POST(req: Request) {
 
     const { emailColaborador } = parseResult.data;
 
-    // Verificar que o usuário existe no Firebase Auth
-    let colaboradorUid: string;
-    try {
-      const userRecord = await adminAuth.getUserByEmail(emailColaborador);
-      colaboradorUid = userRecord.uid;
-    } catch {
-      return jsonErro('Nenhum usuário encontrado com este e-mail.', 'NOT_FOUND', 404);
-    }
+    const colaborador = await prisma.usuario.findUnique({
+      where: { email: emailColaborador }
+    });
 
-    // Verificar que o colaborador pertence à mesma empresa (PostgreSQL)
-    const colaborador = await repositorioUsuariosPg.obterPorId(colaboradorUid);
     if (!colaborador || colaborador.empresaId !== empresaId) {
-      return jsonErro('Este colaborador não pertence à sua empresa.', 'FORBIDDEN', 403);
+      return jsonErro('Este colaborador não pertence à sua empresa ou não existe.', 'FORBIDDEN', 403);
     }
 
-    // Buscar nome da empresa para o template de e-mail
     const empresa = await prisma.empresa.findUnique({
-      where: { id: empresaId },
+      where: { id: empresaId! },
       select: { nome: true },
     });
 
-    // Gerar link de redefinição
-    const resultadoLink = await servicoLinksAutenticacao.gerarLinkRedefinicaoSenha(emailColaborador);
-    if (!resultadoLink.ok || !resultadoLink.link) {
-      return jsonErro(
-        resultadoLink.erro || 'Não foi possível gerar o link de redefinição.',
-        'INTERNAL_ERROR',
-        500
-      );
-    }
-
-    // Enviar e-mail
-    const resultadoEmail = await servicoEmail.enviarEmailResetSenha({
-      emailDestinatario: emailColaborador,
-      linkReset: resultadoLink.link,
-      nomeUsuario: colaborador.nome,
-      nomeEmpresa: empresa?.nome,
+    // Gerar token próprio
+    const tokenStr = crypto.randomUUID();
+    await prisma.tokenResetSenha.create({
+        data: {
+            id: tokenStr,
+            usuarioId: colaborador.id,
+            expiraEm: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24h
+        }
     });
 
-    if (!resultadoEmail.ok) {
-      console.warn(`[REDEFINIR_SENHA] Falha ao enviar e-mail para ${emailColaborador}`);
-    }
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    const linkReset = `${appUrl}/login/redefinir-senha?token=${tokenStr}`;
+
+    // Em ambiente de produção, chamaríamos serviço de email aqui
+    // Ex: await servicoEmail.enviarEmailResetSenha({ emailDestinatario: emailColaborador, linkReset ... });
 
     // Registrar auditoria no PostgreSQL
     await prisma.auditoria.create({
       data: {
-        empresaId,
-        usuarioId: sessao.uid,
+        empresaId: empresaId!,
+        usuarioId: uid,
         acao: 'usuario.redefinir_senha',
         entidade: 'usuario',
-        entidadeId: colaboradorUid,
-        detalhe: { emailColaborador, emailEnviado: resultadoEmail.ok },
+        entidadeId: colaborador.id,
+        detalhe: { emailColaborador, gerouToken: true },
       },
     });
 
     const resposta: Record<string, any> = { sucesso: true };
     if (process.env.NODE_ENV !== 'production') {
-      resposta.linkRedefinicao = resultadoLink.link;
+      resposta.linkRedefinicao = linkReset;
     }
 
     return jsonOk(resposta);

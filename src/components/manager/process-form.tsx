@@ -16,13 +16,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { useFirebase, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, serverTimestamp, doc, writeBatch } from 'firebase/firestore';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 import type { ActivityTemplate, Process, User, UserRole } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -58,8 +56,6 @@ interface ProcessFormProps {
 
 export function ProcessForm({ onSuccess }: ProcessFormProps) {
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-  const { user } = useUser();
   const [createdProcess, setCreatedProcess] = useState<Process | null>(null);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
@@ -68,13 +64,26 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [shift, setShift] = useState<'Manhã' | 'Tarde' | 'Noite'>('Manhã');
   const [date, setDate] = useState<Date | undefined>(new Date());
+  
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
 
-  const usersColRef = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'users');
-  }, [firestore]);
-
-  const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersColRef);
+  useEffect(() => {
+      const fetchUsers = async () => {
+          try {
+              const res = await fetch('/api/empresa/usuarios');
+              const data = await res.json();
+              if (res.ok && data.sucesso) {
+                  setUsers(data.usuarios);
+              }
+          } catch (err) {
+              console.error("Erro ao buscar usuários:", err);
+          } finally {
+              setIsLoadingUsers(false);
+          }
+      };
+      fetchUsers();
+  }, []);
 
   const form = useForm<ProcessFormValues>({
     resolver: zodResolver(formSchema),
@@ -123,7 +132,7 @@ export function ProcessForm({ onSuccess }: ProcessFormProps) {
         description: data.data.description,
         activityIds: data.data.activityIds,
         isActive: true,
-        createdBy: user?.uid || '',
+        createdBy: '', // Será definido pela API se necessário
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };

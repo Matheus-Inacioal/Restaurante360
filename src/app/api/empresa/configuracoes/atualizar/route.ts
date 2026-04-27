@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { obterSessao } from '@/server/auth/obterSessao';
 
 const perfilSchema = z.object({
     nome: z.string().trim().min(2, "Nome é obrigatório").max(80),
@@ -11,8 +10,10 @@ const perfilSchema = z.object({
 
 export async function PUT(req: Request) {
     try {
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+        const authResult = await obterSessao();
+        if (!authResult) {
+            return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+        }
 
         const body = await req.json();
 
@@ -22,45 +23,28 @@ export async function PUT(req: Request) {
         }
 
         const data = parseResult.data;
-        const uid = authResult.sessao.uid;
+        const uid = authResult.uid;
+        const empresaId = authResult.empresaId;
 
-        if (typeof adminDb.collection !== 'function') {
-            return jsonErro("Admin DB indisponível no ambiente abstrato.", "FIREBASE_ADMIN_ERROR", 500);
-        }
-
-        // Atualiza perfil global
-        const usuarioGlobalRef = adminDb.collection("usuarios").doc(uid);
-        await usuarioGlobalRef.update({
-            nome: data.nome,
-            atualizadoEm: FieldValue.serverTimestamp()
-        });
-
-        // Se houver empresaId vinculada, atualiza no tenant também
-        const empresaId = authResult.sessao.empresaId;
-        if (empresaId) {
-            const usuarioTenantRef = adminDb
-                .collection("empresas")
-                .doc(empresaId)
-                .collection("usuarios")
-                .doc(uid);
-
-            // Como pode não existir se foi criado por outro fluxo, fazemos um set merge
-            await usuarioTenantRef.set({
-                nome: data.nome,
-                atualizadoEm: FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            const auditoriaRef = adminDb.collection("auditoria").doc();
-            await auditoriaRef.set({
-                empresaId: empresaId,
-                entidade: "PERFIL_USUARIO",
-                acao: "ATUALIZAR",
-                entidadeId: uid,
-                criadoPor: uid,
-                detalhes: `Usuário atualizou o próprio perfil`,
-                criadoEm: FieldValue.serverTimestamp()
+        await prisma.$transaction(async (tx) => {
+            await tx.usuario.update({
+                where: { id: uid },
+                data: { nome: data.nome }
             });
-        }
+
+            if (empresaId) {
+                await tx.auditoria.create({
+                    data: {
+                        empresaId: empresaId,
+                        usuarioId: uid,
+                        acao: "PERFIL_ATUALIZAR",
+                        entidade: "usuario",
+                        entidadeId: uid,
+                        detalhe: { alteradoPor: "self", campos: ["nome"] }
+                    }
+                });
+            }
+        });
 
         return jsonOk({
             mensagem: "Perfil atualizado com sucesso."

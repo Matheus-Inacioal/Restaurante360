@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { obterSessao } from '@/server/auth/obterSessao';
 
 const concluirTarefaSchema = z.object({
     checklistId: z.string().min(1, 'Checklist ID é obrigatório.'),
@@ -13,8 +12,10 @@ const concluirTarefaSchema = z.object({
 
 export async function POST(req: Request) {
     try {
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+        const authResult = await obterSessao();
+        if (!authResult) {
+            return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+        }
 
         const body = await req.json();
         const parseResult = concluirTarefaSchema.safeParse(body);
@@ -24,76 +25,64 @@ export async function POST(req: Request) {
         }
 
         const data = parseResult.data;
-        const empresaId = authResult.sessao.empresaId!;
-        const uid = authResult.sessao.uid;
+        const empresaId = authResult.empresaId;
+        const uid = authResult.uid;
 
-        const checklistRef = adminDb
-            .collection("empresas")
-            .doc(empresaId)
-            .collection("checklists")
-            .doc(data.checklistId);
+        if (!empresaId) {
+            return jsonErro("Usuário sem empresa vinculada.", "FORBIDDEN", 403);
+        }
 
-        const checklistDoc = await checklistRef.get();
+        const checklist = await prisma.checklist.findFirst({
+            where: {
+                id: data.checklistId,
+                empresaId: empresaId
+            },
+            include: { tarefas: true }
+        });
 
-        if (!checklistDoc.exists) {
+        if (!checklist) {
             return jsonErro("Checklist não encontrado.", "NOT_FOUND", 404);
         }
 
-        const checklistData = checklistDoc.data()!;
-
-        // Verifica se o usuário logado é o atribuído (opcional, mas recomendado)
-        if (checklistData.assignedTo !== uid && authResult.sessao.papelPortal !== 'SISTEMA') {
+        // Verifica permissão
+        if (checklist.responsavelId !== uid && authResult.papel !== 'SISTEMA') {
             return jsonErro("Você não tem permissão para concluir tarefas deste checklist.", "FORBIDDEN", 403);
         }
 
-        const tasks = checklistData.tasks || [];
-        let taskEncontrada = false;
-
-        const updatedTasks = tasks.map((t: any) => {
-            if (t.id === data.taskId) {
-                taskEncontrada = true;
-                return {
-                    ...t,
-                    status: 'done',
-                    completedAt: new Date().toISOString(),
-                    completedBy: uid,
-                    photoUrls: data.photoUrls || [],
-                };
-            }
-            return t;
-        });
-
-        if (!taskEncontrada) {
+        const tarefa = checklist.tarefas.find(t => t.id === data.taskId);
+        if (!tarefa) {
             return jsonErro("Tarefa não encontrada no checklist.", "NOT_FOUND", 404);
         }
 
-        const allTasksCompleted = updatedTasks.every((t: any) => t.status === 'done');
-        let newStatus = checklistData.status;
-
-        if (allTasksCompleted) {
-            newStatus = 'completed';
-        } else if (updatedTasks.some((t: any) => t.status === 'done')) {
-            newStatus = 'in_progress';
-        }
-
-        await checklistRef.update({
-            tasks: updatedTasks,
-            status: newStatus,
-            updatedAt: FieldValue.serverTimestamp()
+        const novaTarefa = await prisma.tarefaChecklist.update({
+            where: { id: data.taskId },
+            data: {
+                status: "concluida",
+                concluidaEm: new Date(),
+                fotos: data.photoUrls || []
+            }
         });
 
-        // Registrar auditoria se finalizou tudo
-        if (allTasksCompleted && checklistData.status !== 'completed') {
-            const auditoriaRef = adminDb.collection("auditoria").doc();
-            await auditoriaRef.set({
-                empresaId: empresaId,
-                entidade: "CHECKLIST",
-                acao: "CONCLUIR",
-                entidadeId: checklistRef.id,
-                criadoPor: uid,
-                detalhes: `Checklist '${checklistData.processName}' finalizado por completo.`,
-                criadoEm: FieldValue.serverTimestamp()
-            });
+        const todasTarefasAgora = checklist.tarefas.map(t => t.id === data.taskId ? novaTarefa : t);
+        const allTasksCompleted = todasTarefasAgora.every(t => t.status === "concluida");
+
+        if (allTasksCompleted) {
+            await prisma.$transaction([
+                prisma.checklist.update({
+                    where: { id: checklist.id },
+                    data: { status: "concluida" }
+                }),
+                prisma.auditoria.create({
+                    data: {
+                        empresaId: empresaId,
+                        usuarioId: uid,
+                        acao: "CHECKLIST_CONCLUIR",
+                        entidade: "checklist",
+                        entidadeId: checklist.id,
+                        detalhe: { nome: checklist.nome }
+                    }
+                })
+            ]);
         }
 
         return jsonOk({

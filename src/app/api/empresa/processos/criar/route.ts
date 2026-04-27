@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '@/server/firebase/admin';
+import { prisma } from '@/lib/prisma';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { obterSessao } from '@/server/auth/obterSessao';
+import crypto from 'crypto';
 
 const taskSchemaInput = z.object({
     title: z.string().min(3),
@@ -20,8 +20,10 @@ const processoEmpresaSchema = z.object({
 
 export async function POST(req: Request) {
     try {
-        const authResult = await garantirAcessoEmpresa(req);
-        if (authResult instanceof Response) return authResult;
+        const authResult = await obterSessao();
+        if (!authResult) {
+            return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+        }
 
         const body = await req.json();
         const parseResult = processoEmpresaSchema.safeParse(body);
@@ -31,74 +33,57 @@ export async function POST(req: Request) {
         }
 
         const data = parseResult.data;
-        const empresaId = authResult.sessao.empresaId!;
-        const uid = authResult.sessao.uid;
+        const empresaId = authResult.empresaId;
+        const uid = authResult.uid;
 
-        if (typeof adminDb.collection !== 'function') {
-            return jsonErro("Admin DB indisponível no ambiente abstrato.", "FIREBASE_ADMIN_ERROR", 500);
+        if (!empresaId) {
+            return jsonErro("Usuário sem empresa vinculada.", "FORBIDDEN", 403);
         }
 
-        const batch = adminDb.batch();
+        const passos = data.tasks.map(t => ({
+            id: crypto.randomUUID(),
+            titulo: t.title,
+            descricao: t.description || '',
+            exigeFoto: t.requiresPhoto
+        }));
 
-        // Criar as tasks associadas (ActivityTemplates) no escopo da empresa
-        const activityIds: string[] = [];
-        const createdActivities: any[] = [];
+        const novoProcesso = await prisma.$transaction(async (tx) => {
+            const proc = await tx.processo.create({
+                data: {
+                    empresaId,
+                    titulo: data.name,
+                    descricao: data.description,
+                    categoriaId: data.categoryId,
+                    passos: passos,
+                    ativo: true
+                }
+            });
 
-        for (const task of data.tasks) {
-            const activityRef = adminDb.collection("empresas").doc(empresaId).collection("activityTemplates").doc();
+            await tx.auditoria.create({
+                data: {
+                    empresaId,
+                    usuarioId: uid,
+                    acao: "PROCESSO_CRIAR",
+                    entidade: "processo",
+                    entidadeId: proc.id,
+                    detalhe: { nome: data.name, quantidadePassos: passos.length }
+                }
+            });
 
-            const newActivity = {
-                title: task.title,
-                description: task.description || '',
-                category: 'Outro',
-                frequency: 'on-demand',
-                isRecurring: true,
-                requiresPhoto: task.requiresPhoto,
-                status: 'active',
-                createdBy: uid,
-                createdAt: FieldValue.serverTimestamp(),
-                updatedAt: FieldValue.serverTimestamp(),
-            };
-
-            batch.set(activityRef, newActivity);
-            activityIds.push(activityRef.id);
-            createdActivities.push({ ...newActivity, id: activityRef.id });
-        }
-
-        // Criar o processo
-        const processRef = adminDb.collection("empresas").doc(empresaId).collection("processes").doc();
-
-        batch.set(processRef, {
-            name: data.name,
-            categoryId: data.categoryId,
-            description: data.description,
-            activityIds,
-            isActive: true,
-            createdBy: uid,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            return proc;
         });
-
-        const auditoriaRef = adminDb.collection("auditoria").doc();
-        batch.set(auditoriaRef, {
-            empresaId: empresaId,
-            entidade: "PROCESSO_ROTINA",
-            acao: "CRIAR",
-            entidadeId: processRef.id,
-            criadoPor: uid,
-            detalhes: `Rotina/Processo '${data.name}' criado com ${data.tasks.length} tarefas.`,
-            criadoEm: FieldValue.serverTimestamp()
-        });
-
-        await batch.commit();
 
         return jsonOk({
-            processId: processRef.id,
-            name: data.name,
-            categoryId: data.categoryId,
-            description: data.description,
-            activityIds,
-            createdActivities
+            processId: novoProcesso.id,
+            name: novoProcesso.titulo,
+            categoryId: novoProcesso.categoriaId,
+            description: novoProcesso.descricao,
+            createdActivities: passos.map(p => ({
+                id: p.id,
+                title: p.titulo,
+                description: p.descricao,
+                requiresPhoto: p.exigeFoto
+            }))
         }, 201);
 
     } catch (error: any) {

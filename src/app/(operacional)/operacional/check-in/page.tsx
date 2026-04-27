@@ -12,37 +12,25 @@ import {
   CardFooter,
 } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { useFirebase, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 export default function CheckInPage() {
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [checkInTime, setCheckInTime] = useState('');
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-  const { user } = useUser();
-
   const handleCheckIn = async () => {
-    if (!user || !firestore) {
-        toast({
-            variant: 'destructive',
-            title: 'Erro de autenticação',
-            description: 'Você precisa estar logado para fazer o check-in.'
-        });
-        return;
-    }
-
+    setIsCheckedIn(true); // Pre-check to prevent double clicking
     const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     
     try {
-        const checkInsCollection = collection(firestore, 'checkIns');
-        addDocumentNonBlocking(checkInsCollection, {
-            userId: user.uid,
-            date: new Date().toISOString().split('T')[0],
-            shift: 'Manhã', // This could be dynamic based on time
-            createdAt: serverTimestamp(),
+        const res = await fetch('/api/operacional/check-in', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shift: 'Manhã' })
         });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.erro || 'Falha ao registrar');
 
         setIsCheckedIn(true);
         setCheckInTime(time);
@@ -53,6 +41,7 @@ export default function CheckInPage() {
         });
     } catch (error) {
         console.error('Error performing check-in:', error);
+        setIsCheckedIn(false);
         toast({
             variant: 'destructive',
             title: 'Erro ao fazer check-in',
@@ -92,7 +81,7 @@ export default function CheckInPage() {
             className="w-full"
             size="lg"
             onClick={handleCheckIn}
-            disabled={isCheckedIn || !user}
+            disabled={isCheckedIn}
           >
             {isCheckedIn ? 'Turno Iniciado' : 'Fazer Check-in Agora'}
           </Button>

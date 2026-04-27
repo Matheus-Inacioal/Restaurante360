@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/firebase';
+import { usePerfil } from '@/hooks/use-perfil';
 import {
     User,
     Settings,
@@ -23,11 +23,11 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 
 export default function ConfiguracoesPage() {
-    const auth = useAuth();
-    const usuarioLogado = auth?.currentUser;
+    const { perfilUsuario, carregandoPerfil } = usePerfil();
+    const usuarioLogado = perfilUsuario;
 
     // Mock dados
-    const nomeUsuario = usuarioLogado?.displayName || 'Administrador do Sistema';
+    const nomeUsuario = usuarioLogado?.nome || 'Administrador do Sistema';
     const emailUsuario = usuarioLogado?.email || 'admin@restaurante360.com.br';
     const iniciais = nomeUsuario.split(' ').map((n) => n[0]).join('').substring(0, 2);
 

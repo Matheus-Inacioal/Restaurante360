@@ -18,16 +18,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import type { User, UserRole } from '@/lib/types';
-import { useFirebase, useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc } from 'firebase/firestore';
-import { addDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 
 const formSchema = z.object({
@@ -47,16 +44,25 @@ interface OneOffTaskFormProps {
 
 export function OneOffTaskForm({ onSuccess }: OneOffTaskFormProps) {
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-  const { user } = useUser();
-  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
 
-  const usersColRef = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'users');
-  }, [firestore]);
-
-  const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersColRef);
+  useEffect(() => {
+      const fetchUsers = async () => {
+          try {
+              const res = await fetch('/api/empresa/usuarios');
+              const data = await res.json();
+              if (res.ok && data.sucesso) {
+                  setUsers(data.usuarios);
+              }
+          } catch (err) {
+              console.error("Erro ao buscar usuários:", err);
+          } finally {
+              setIsLoadingUsers(false);
+          }
+      };
+      fetchUsers();
+  }, []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),

@@ -26,9 +26,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import type { ActivityTemplate, UserRole } from '@/lib/types';
-import { useFirebase, useUser } from '@/firebase';
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+
 
 
 const formSchema = z.object({
@@ -50,8 +48,6 @@ interface ActivityFormProps {
 
 export function ActivityForm({ activity, onSuccess }: ActivityFormProps) {
   const { toast } = useToast();
-  const { firestore } = useFirebase();
-  const { user } = useUser();
 
   const form = useForm<ActivityFormValues>({
     resolver: zodResolver(formSchema),

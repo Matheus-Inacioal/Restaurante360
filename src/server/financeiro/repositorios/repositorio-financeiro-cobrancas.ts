@@ -1,40 +1,68 @@
 import "server-only";
-import { adminDb } from '@/server/firebase/admin';
-import { COLECOES } from '@/lib/firebase/colecoes';
+import { prisma } from '@/lib/prisma';
 import { Cobranca } from '@/lib/types/financeiro';
 
 export const repositorioFinanceiroCobrancas = {
     async criarOuAtualizarCobrancaPorAsaasPaymentId(asaasPaymentId: string, dados: Partial<Cobranca> & { id?: string }): Promise<string> {
-        // Find existing to update, or create new
-        const snapshot = await adminDb.collection(COLECOES.FINANCEIRO_COBRANCAS)
-            .where('asaasPaymentId', '==', asaasPaymentId)
-            .limit(1)
-            .get();
+        const existing = await prisma.cobranca.findUnique({
+            where: { asaasPaymentId }
+        });
 
-        let docRef;
-        if (!snapshot.empty) {
-            docRef = snapshot.docs[0].ref;
+        if (existing) {
+            await prisma.cobranca.update({
+                where: { asaasPaymentId },
+                data: {
+                    assinaturaId: dados.assinaturaId,
+                    asaasSubscriptionId: dados.asaasSubscriptionId,
+                    valor: dados.valor,
+                    valorLiquido: dados.valorLiquido,
+                    vencimento: dados.vencimento ? new Date(dados.vencimento) : undefined,
+                    status: dados.status,
+                    formaPagamento: dados.formaPagamento,
+                    invoiceUrl: dados.invoiceUrl,
+                    bankSlipUrl: dados.bankSlipUrl,
+                    pixPayload: dados.pixPayload,
+                    pagaEm: dados.pagaEm ? new Date(dados.pagaEm) : null,
+                }
+            });
+            return existing.id;
         } else {
-            docRef = adminDb.collection(COLECOES.FINANCEIRO_COBRANCAS).doc(dados.id || crypto.randomUUID());
-            dados.criadoEm = dados.criadoEm || new Date().toISOString();
+            const docId = dados.id || crypto.randomUUID();
+            await prisma.cobranca.create({
+                data: {
+                    id: docId,
+                    empresaId: dados.empresaId!,
+                    asaasPaymentId,
+                    assinaturaId: dados.assinaturaId,
+                    asaasSubscriptionId: dados.asaasSubscriptionId,
+                    valor: dados.valor || 0,
+                    valorLiquido: dados.valorLiquido,
+                    vencimento: dados.vencimento ? new Date(dados.vencimento) : new Date(),
+                    status: dados.status || "PENDING",
+                    formaPagamento: dados.formaPagamento || "UNDEFINED",
+                    invoiceUrl: dados.invoiceUrl,
+                    bankSlipUrl: dados.bankSlipUrl,
+                    pixPayload: dados.pixPayload,
+                    pagaEm: dados.pagaEm ? new Date(dados.pagaEm) : null,
+                }
+            });
+            return docId;
         }
-
-        await docRef.set({
-            ...dados,
-            asaasPaymentId,
-            atualizadoEm: new Date().toISOString()
-        }, { merge: true });
-
-        return docRef.id;
     },
 
     async listarCobrancasPorEmpresa(empresaId: string, limite: number = 10): Promise<Cobranca[]> {
-        const snapshot = await adminDb.collection(COLECOES.FINANCEIRO_COBRANCAS)
-            .where('empresaId', '==', empresaId)
-            .orderBy('vencimento', 'desc')
-            .limit(limite)
-            .get();
+        const cobrancas = await prisma.cobranca.findMany({
+            where: { empresaId },
+            orderBy: { vencimento: 'desc' },
+            take: limite
+        });
 
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cobranca));
+        return cobrancas.map(c => ({
+            ...c,
+            vencimento: c.vencimento.toISOString(),
+            pagaEm: c.pagaEm?.toISOString(),
+            criadoEm: c.criadaEm.toISOString(),
+            atualizadoEm: c.atualizadaEm.toISOString(),
+        } as unknown as Cobranca));
     }
 }

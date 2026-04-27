@@ -11,9 +11,8 @@
  * - Não permite auto-inativação
  */
 import { z } from 'zod';
-import { adminAuth } from '@/server/firebase/admin';
 import { jsonOk, jsonErro, mapearZodError } from '@/server/http/respostas';
-import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
+import { obterSessao } from '@/server/auth/obterSessao';
 import { repositorioUsuariosPg } from '@/server/repositorios/repositorio-usuarios-pg';
 import { prisma } from '@/lib/prisma';
 
@@ -26,15 +25,16 @@ const alterarStatusSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const authResult = await garantirAcessoEmpresa(req);
-    if (authResult instanceof Response) return authResult;
+    const authResult = await obterSessao();
+    if (!authResult) {
+      return jsonErro("Não autorizado.", "UNAUTHORIZED", 401);
+    }
 
-    const { sessao, empresaId } = authResult;
+    const { uid: myUid, papel, empresaId } = authResult;
 
     // Apenas gestores podem alterar status
     const papelPermitido =
-      sessao.papel === 'gestorCorporativo' ||
-      sessao.papel === 'gestorLocal';
+      papel === 'gestorCorporativo' || papel === 'gestorLocal';
     if (!papelPermitido) {
       return jsonErro('Apenas gestores podem alterar o status de colaboradores.', 'FORBIDDEN', 403);
     }
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     const ativo = novoStatus === 'ativo';
 
     // Impedir auto-inativação
-    if (uid === sessao.uid && !ativo) {
+    if (uid === myUid && !ativo) {
       return jsonErro('Você não pode inativar a si mesmo.', 'FORBIDDEN', 403);
     }
 
@@ -57,26 +57,18 @@ export async function POST(req: Request) {
       return jsonErro('Colaborador não encontrado nesta empresa.', 'NOT_FOUND', 404);
     }
 
-    // Atualizar Firebase Auth
-    try {
-      await adminAuth.updateUser(uid, { disabled: !ativo });
-    } catch (authError: any) {
-      console.error(`[ALTERAR_STATUS] Erro no Auth para UID ${uid}:`, authError);
-      return jsonErro(`Falha ao ${ativo ? 'reativar' : 'inativar'} acesso no Auth.`, 'INTERNAL_ERROR', 500);
-    }
-
     // Atualizar PostgreSQL
     const usuarioAtualizado = await repositorioUsuariosPg.atualizar(uid, { status: novoStatus });
 
     // Registrar auditoria
     await prisma.auditoria.create({
       data: {
-        empresaId,
-        usuarioId: sessao.uid,
+        empresaId: empresaId!,
+        usuarioId: myUid,
         acao: ativo ? 'usuario.reativado' : 'usuario.inativado',
         entidade: 'usuario',
         entidadeId: uid,
-        detalhe: { novoStatus, realizadoPor: sessao.uid },
+        detalhe: { novoStatus, realizadoPor: myUid },
       },
     });
 

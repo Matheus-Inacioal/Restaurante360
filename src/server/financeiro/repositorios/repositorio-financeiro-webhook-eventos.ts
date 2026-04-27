@@ -1,6 +1,5 @@
 import "server-only";
-import { adminDb } from '@/server/firebase/admin';
-import { COLECOES } from '@/lib/firebase/colecoes';
+import { prisma } from '@/lib/prisma';
 
 export interface WebhookEvento {
     id: string; // usually asaas event id
@@ -11,16 +10,21 @@ export interface WebhookEvento {
 
 export const repositorioFinanceiroWebhookEventos = {
     async verificarIdempotencia(eventoId: string): Promise<boolean> {
-        const doc = await adminDb.collection(COLECOES.FINANCEIRO_WEBHOOK_EVENTOS).doc(eventoId).get();
-        return doc.exists;
+        const doc = await prisma.webhookEvento.findUnique({
+            where: { id: eventoId }
+        });
+        return !!doc;
     },
 
     async registrarProcessamento(eventoId: string, evento: string, dados: any): Promise<void> {
-        await adminDb.collection(COLECOES.FINANCEIRO_WEBHOOK_EVENTOS).doc(eventoId).set({
-            id: eventoId,
-            evento,
-            processadoEm: new Date().toISOString(),
-            dados
+        await prisma.webhookEvento.create({
+            data: {
+                id: eventoId,
+                tipo: evento,
+                processadoEm: new Date(),
+                processado: true,
+                payload: dados
+            }
         });
     }
 }
