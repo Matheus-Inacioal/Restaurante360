@@ -60,7 +60,7 @@ export default function ConfiguracoesSistemaPage() {
                     <CardContent>
                         <div className="flex items-center gap-3">
                             <Button variant="outline" asChild>
-                                <Link href="/operacional/ajuda">Acessar base de ajuda legal</Link>
+                                <Link href="/sistema/ajuda">Acessar base de ajuda legal</Link>
                             </Button>
                             <span className="text-sm text-muted-foreground">Termos definitivos sendo revisados (Em breve).</span>
                         </div>

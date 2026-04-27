@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/sidebar';
 
 const navItems = [
-    { href: '/operacional', label: 'Minhas Tarefas', icon: ClipboardCheck },
+    { href: '/operacional/minhas-tarefas', label: 'Minhas Tarefas', icon: ClipboardCheck },
     { href: '/operacional/rotinas', label: 'Rotinas', icon: CalendarClock },
     { href: '/operacional/processos', label: 'Processos', icon: BookOpen },
     { href: '/operacional/notificacoes', label: 'Notificações', icon: Bell },

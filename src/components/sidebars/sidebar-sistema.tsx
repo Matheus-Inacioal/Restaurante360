@@ -8,7 +8,12 @@ import {
     ShieldCheck,
     Users,
     Settings,
-    UtensilsCrossed
+    UtensilsCrossed,
+    ClipboardCheck,
+    CalendarClock,
+    BookOpen,
+    Bell,
+    LifeBuoy
 } from 'lucide-react';
 import {
     Sidebar,
@@ -21,9 +26,14 @@ import {
 
 const navItems = [
     { href: '/sistema', label: 'Visão Geral', icon: LayoutDashboard },
+    { href: '/sistema/minhas-tarefas', label: 'Minhas Tarefas', icon: ClipboardCheck },
+    { href: '/sistema/rotinas', label: 'Rotinas', icon: CalendarClock },
+    { href: '/sistema/processos', label: 'Processos', icon: BookOpen },
     { href: '/sistema/empresas', label: 'Empresas', icon: Building2 },
     { href: '/sistema/assinaturas', label: 'Assinaturas', icon: ShieldCheck },
     { href: '/sistema/usuarios', label: 'Usuários do Sistema', icon: Users },
+    { href: '/sistema/notificacoes', label: 'Notificações', icon: Bell },
+    { href: '/sistema/ajuda', label: 'Ajuda', icon: LifeBuoy },
     { href: '/sistema/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
