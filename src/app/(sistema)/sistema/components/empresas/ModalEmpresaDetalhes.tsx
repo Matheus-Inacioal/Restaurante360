@@ -6,7 +6,6 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { formatarCNPJ, formatarTelefoneBR } from '@/lib/formatadores/formato';
 import { fetchJSON, FetchJsonError } from '@/lib/http/fetch-json';
-import { auth } from '@/lib/firebase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Building2, Mail, Phone, Calendar, Hash, Banknote, Edit2, ShieldAlert, CheckCircle2, XCircle, PauseCircle, Trash2, AlertCircle, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -307,12 +306,10 @@ export function ModalEmpresaDetalhes({ empresaId, open, onOpenChange, onUpdated 
 
         setIsSavingSenha(true);
         try {
-            const token = await auth.currentUser?.getIdToken();
             await fetchJSON('/api/sistema/empresas/definir-senha-temporaria', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     empresaId,
