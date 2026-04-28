@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+    LayoutDashboard,
     ClipboardCheck,
-    CalendarClock,
+    CheckSquare,
+    RefreshCw,
     BookOpen,
+    MapPin,
     Bell,
     LifeBuoy,
     Settings,
@@ -21,9 +24,12 @@ import {
 } from '@/components/ui/sidebar';
 
 const navItems = [
+    { href: '/operacional', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/operacional/minhas-tarefas', label: 'Minhas Tarefas', icon: ClipboardCheck },
-    { href: '/operacional/rotinas', label: 'Rotinas', icon: CalendarClock },
+    { href: '/operacional/tarefas', label: 'Tarefas', icon: CheckSquare },
+    { href: '/operacional/rotinas', label: 'Rotinas', icon: RefreshCw },
     { href: '/operacional/processos', label: 'Processos', icon: BookOpen },
+    { href: '/operacional/check-in', label: 'Check-in', icon: MapPin },
     { href: '/operacional/notificacoes', label: 'Notificações', icon: Bell },
     { href: '/operacional/ajuda', label: 'Ajuda', icon: LifeBuoy },
     { href: '/operacional/configuracoes', label: 'Configurações', icon: Settings },

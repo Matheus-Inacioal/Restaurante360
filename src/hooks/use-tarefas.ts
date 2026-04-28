@@ -49,7 +49,7 @@ export function useTarefas() {
         } finally {
             setIsCarregando(false);
         }
-    }, [toast]);
+    }, [toast, empresaId, carregandoTenant, carregandoPerfil]);
 
     useEffect(() => {
         carregarTarefas();

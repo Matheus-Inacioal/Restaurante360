@@ -10,8 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { useTarefas } from '@/hooks/use-tarefas';
-import { useUsuarios } from '@/hooks/use-usuarios';
+import { useDashboardEmpresa } from '@/hooks/use-dashboard-empresa';
 
 // Import dos novos componentes modulares
 import { DashboardCards } from './dashboard-cards';
@@ -22,11 +21,7 @@ import { DashboardCharts, type ChartDataPoint } from './dashboard-charts';
 export function ManagerDashboard() {
   const [period, setPeriod] = useState('hoje');
 
-  const { tarefas, isCarregando: carregandoTarefas, erro: erroTarefas } = useTarefas();
-  const { usuarios, isCarregando: carregandoUsuarios, erro: erroUsuarios } = useUsuarios();
-
-  const isCarregando = carregandoTarefas || carregandoUsuarios;
-  const erro = erroTarefas || erroUsuarios;
+  const { dados, isCarregando, erro, vazio, recarregar } = useDashboardEmpresa();
 
   // Tratamento da data contextual
   const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', day: 'numeric', month: 'long' };
@@ -65,78 +60,42 @@ export function ManagerDashboard() {
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Erro ao carregar dashboard</AlertTitle>
-        <AlertDescription>
-          {erro}. Tente recarregar a página.
+        <AlertDescription className="flex flex-col gap-3 items-start mt-2">
+          <p>{erro}</p>
+          <Button variant="outline" size="sm" onClick={() => recarregar()}>Tentar Novamente</Button>
         </AlertDescription>
       </Alert>
     );
   }
 
+  if (vazio || !dados) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 text-center h-[50vh] border-2 border-dashed rounded-xl bg-background/50">
+        <div className="p-3 bg-muted rounded-full mb-4">
+          <CalendarIcon className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h3 className="text-xl font-bold tracking-tight mb-2">Painel Vazio</h3>
+        <p className="text-muted-foreground max-w-sm mb-6">
+          Sua empresa ainda não possui dados operacionais suficientes para gerar este painel. 
+          Comece criando processos, rotinas ou tarefas.
+        </p>
+        <Button onClick={() => recarregar()}>Atualizar Painel</Button>
+      </div>
+    );
+  }
+
   // ==========================================
-  // PROCESSAMENTO DE DADOS REAIS
+  // PROCESSAMENTO DE DADOS (Vindo da API)
   // ==========================================
-  const todayStr = new Date().toISOString().split('T')[0];
-
-  const tarefasDoDia = tarefas.filter(t => t.origem?.dataReferencia === todayStr || t.prazo?.startsWith(todayStr));
-  const executionTodayTotal = tarefasDoDia.length;
-  const executionTodayCompleted = tarefasDoDia.filter(t => t.status === 'concluida').length;
-  const pendingCritical = tarefas.filter(t => t.prioridade === 'Alta' && t.status !== 'concluida').length;
-  const activeTeam = usuarios.filter(u => u.status === 'ativo').length;
-
-  const prioritiesList: PriorityItem[] = tarefas
-    .filter(t => t.status === 'pendente' || t.status === 'em_progresso' || t.status === 'atrasada')
-    .sort((a, b) => {
-      // Tarefas sem prazo vêm por último
-      if (!a.prazo) return 1;
-      if (!b.prazo) return -1;
-      return new Date(a.prazo).getTime() - new Date(b.prazo).getTime();
-    })
-    .slice(0, 5)
-    .map(t => ({
-      id: t.id,
-      type: t.origem?.tipo || 'tarefa',
-      title: t.titulo,
-      assignee: usuarios.find(u => u.id === t.responsavel)?.nome || 'Não atribuído',
-      deadline: t.prazo ? new Date(t.prazo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Sem prazo',
-      status: t.prazo && new Date(t.prazo) < new Date() ? 'atrasado' : 'hoje'
-    }));
-
-  const feedList: FeedItem[] = tarefas
-    .filter(t => t.status === 'concluida')
-    .sort((a, b) => new Date(b.atualizadoEm || b.criadoEm).getTime() - new Date(a.atualizadoEm || a.criadoEm).getTime())
-    .slice(0, 5)
-    .map(t => {
-      const u = usuarios.find(usr => usr.id === t.responsavel);
-      const nome = u?.nome || 'Sistema';
-      const initials = nome.substring(0, 2).toUpperCase();
-
-      let tempo = 'Hoje';
-      if (t.atualizadoEm) {
-        const diffEmMinutos = Math.floor((new Date().getTime() - new Date(t.atualizadoEm).getTime()) / 60000);
-        if (diffEmMinutos < 60) {
-          tempo = `há ${diffEmMinutos} min`;
-        } else if (diffEmMinutos < 1440) {
-          tempo = `há ${Math.floor(diffEmMinutos / 60)}h`;
-        } else {
-          tempo = new Date(t.atualizadoEm).toLocaleDateString('pt-BR');
-        }
-      }
-
-      return {
-        id: t.id,
-        user: nome,
-        initials,
-        action: 'concluiu algo',
-        target: t.titulo,
-        time: tempo
-      };
-    });
-
-  const chartData: ChartDataPoint[] = [
-    { name: 'Concluído', value: tarefas.filter(t => t.status === 'concluida').length, color: 'hsl(var(--primary))' },
-    { name: 'Em Progresso', value: tarefas.filter(t => t.status === 'em_progresso').length, color: 'hsl(var(--accent))' },
-    { name: 'Pendente', value: tarefas.filter(t => t.status === 'pendente' || t.status === 'atrasada').length, color: 'hsl(var(--muted-foreground))' },
-  ];
+  const {
+    executionTodayTotal,
+    executionTodayCompleted,
+    pendingCritical,
+    activeTeam,
+    prioritiesList,
+    feedList,
+    chartData
+  } = dados;
 
   return (
     <div className="flex flex-col space-y-6">

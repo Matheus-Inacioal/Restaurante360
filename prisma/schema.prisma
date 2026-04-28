@@ -111,6 +111,10 @@ model Empresa {
   tarefas       Tarefa[]
   rotinas       Rotina[]
   processos     Processo[]
+  receitas      ReceitaPreparo[]
+  pops          PopOperacional[]
+  checklists    ChecklistOperacional[]
+  ocorrencias   OcorrenciaOperacional[]
   categorias    Categoria[]
   notificacoes  Notificacao[]
   auditoria     Auditoria[]
@@ -137,8 +141,12 @@ model Unidade {
   atualizadoEm DateTime   @updatedAt
 
   // Relações
-  empresa  Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  usuarios Usuario[]
+  empresa     Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuarios    Usuario[]
+  receitas    ReceitaPreparo[]
+  pops        PopOperacional[]
+  checklists  ChecklistOperacional[]
+  ocorrencias OcorrenciaOperacional[]
 
   @@map("unidades")
 }
@@ -223,6 +231,10 @@ model Usuario {
   tarefasCriadas     Tarefa[]          @relation("TarefaCriador")
   tarefasResponsavel Tarefa[]          @relation("TarefaResponsavel")
   rotinasCriadas     Rotina[]          @relation("RotinaCriador")
+  receitasCriadas    ReceitaPreparo[]  @relation("ReceitaCriador")
+  popsCriados        PopOperacional[]  @relation("PopCriador")
+  checklistsCriados  ChecklistOperacional[] @relation("ChecklistCriador")
+  ocorrenciasCriadas OcorrenciaOperacional[] @relation("OcorrenciaCriador")
   notificacoes       Notificacao[]
   tokensResetSenha   TokenResetSenha[]
 
@@ -558,4 +570,127 @@ model WebhookEvento {
   criadoEm     DateTime @default(now())
 
   @@map("webhook_eventos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OPERAÇÃO — Receitas e Preparos
+// ─────────────────────────────────────────────────────────────
+
+model ReceitaPreparo {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  unidadeId           String?
+  nome                String
+  categoria           String?
+  descricao           String?
+  ingredientes        Json?    // [{ nome, quantidade, unidadeMedida }]
+  proporcoes          String?
+  rendimento          String?
+  validade            String?
+  tempoPreparoMinutos Int?
+  modoPreparo         String?  // Texto rico ou passos
+  observacoes         String?
+  midias              Json?    // [url]
+  status              StatusAtivo @default(ativo)
+  criadoPor           String
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  unidade Unidade? @relation(fields: [unidadeId], references: [id])
+  criador Usuario  @relation("ReceitaCriador", fields: [criadoPor], references: [id])
+
+  @@map("receitas_preparos")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OPERAÇÃO — POPs (Procedimentos Operacionais Padrão)
+// ─────────────────────────────────────────────────────────────
+
+model PopOperacional {
+  id                   String   @id @default(cuid())
+  empresaId            String
+  unidadeId            String?
+  nome                 String
+  categoria            String?
+  objetivo             String?
+  quandoExecutar       String?
+  setor                String?
+  responsavel          String?  // Ex: "Atendente", "Gerente"
+  materiaisNecessarios String?
+  etapas               Json?    // [{ ordem, titulo, descricao, midiaUrl }]
+  pontosAtencao        String?
+  frequencia           String?
+  status               StatusAtivo @default(ativo)
+  criadoPor            String
+  criadoEm             DateTime @default(now())
+  atualizadoEm         DateTime @updatedAt
+
+  empresa   Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  unidade   Unidade?               @relation(fields: [unidadeId], references: [id])
+  criador   Usuario                @relation("PopCriador", fields: [criadoPor], references: [id])
+  checklists ChecklistOperacional[]
+
+  @@map("pops_operacionais")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OPERAÇÃO — Checklists
+// ─────────────────────────────────────────────────────────────
+
+model ChecklistOperacional {
+  id               String   @id @default(cuid())
+  empresaId        String
+  unidadeId        String?
+  nome             String
+  tipo             String?  // Abertura, Fechamento, Limpeza
+  frequencia       String?
+  setor            String?
+  etapas           Json?    // [{ ordem, texto, concluido, fotoUrl }]
+  responsavel      String?
+  prazo            DateTime?
+  popRelacionadoId String?
+  exigeFoto        Boolean  @default(false)
+  status           StatusAtivo @default(ativo)
+  criadoPor        String
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  unidade Unidade? @relation(fields: [unidadeId], references: [id])
+  criador Usuario  @relation("ChecklistCriador", fields: [criadoPor], references: [id])
+  pop     PopOperacional? @relation(fields: [popRelacionadoId], references: [id])
+
+  @@map("checklists_operacionais")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OPERAÇÃO — Ocorrências
+// ─────────────────────────────────────────────────────────────
+
+model OcorrenciaOperacional {
+  id                   String   @id @default(cuid())
+  empresaId            String
+  unidadeId            String?
+  tipo                 String   // Quebra, Perda, Manutenção
+  item                 String
+  quantidade           Float?
+  descricao            String?
+  setor                String?
+  responsavel          String?
+  foto                 String?
+  gravidade            String?  // baixa, media, alta, critica
+  status               String   @default("aberta") // aberta, em_andamento, resolvida, cancelada
+  geraBaixaEstoque     Boolean  @default(false)
+  baixaEstoqueAprovada Boolean  @default(false)
+  observacaoGestor     String?
+  criadoPor            String
+  criadoEm             DateTime @default(now())
+  atualizadoEm         DateTime @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  unidade Unidade? @relation(fields: [unidadeId], references: [id])
+  criador Usuario  @relation("OcorrenciaCriador", fields: [criadoPor], references: [id])
+
+  @@map("ocorrencias_operacionais")
 }
