@@ -31,7 +31,7 @@ export function podeAcessarPortal(
 
   switch (portal) {
     case 'sistema':
-      return perfil.papel === 'saasAdmin';
+      return perfil.papel === 'saasAdmin' || perfil.papel === 'gestorCorporativo';
 
     case 'empresa':
       return (

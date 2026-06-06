@@ -81,6 +81,72 @@ enum CategoriaNotificacao {
   rotina_alerta
 }
 
+/// Tipo de registro de ponto
+enum TipoRegistroPonto {
+  entrada
+  inicio_pausa
+  fim_pausa
+  saida
+}
+
+/// Status do registro de ponto
+enum StatusRegistroPonto {
+  valido
+  recusado
+  ajustado
+  pendente
+}
+
+/// Origem do registro de ponto
+enum OrigemRegistroPonto {
+  app_mobile
+  app_web
+  ajuste_gestor
+  importacao
+}
+
+/// Tipo de alteração na auditoria de ponto
+enum TipoAlteracaoPonto {
+  criacao
+  edicao
+  exclusao_logica
+  ajuste
+  aprovacao
+}
+
+/// Tipo de escala de trabalho
+enum TipoEscala {
+  cinco_por_dois
+  seis_por_um
+  doze_por_trinta_seis
+  personalizada
+}
+
+/// Dia da semana
+enum DiaSemana {
+  domingo
+  segunda
+  terca
+  quarta
+  quinta
+  sexta
+  sabado
+}
+
+/// Status do fechamento de ponto
+enum StatusFechamento {
+  aberto
+  fechado
+  revisao
+}
+
+/// Status de justificativa de ponto
+enum StatusJustificativa {
+  pendente_aprovacao
+  aprovada
+  recusada
+}
+
 // ─────────────────────────────────────────────────────────────
 // EMPRESAS (Tenants)
 // ─────────────────────────────────────────────────────────────
@@ -120,7 +186,11 @@ model Empresa {
   auditoria     Auditoria[]
   assinaturas   Assinatura[]
   cobrancas     Cobranca[]
-  aceites       AceiteAssinatura[]
+  aceites         AceiteAssinatura[]
+  escalasTrabalho EscalaTrabalho[]
+  cargos          Cargo[]
+  perfisAcesso    PerfilAcesso[]
+  auditoriasPermissao AuditoriaPermissao[]
 
   @@map("empresas")
 }
@@ -140,13 +210,21 @@ model Unidade {
   criadoEm     DateTime   @default(now())
   atualizadoEm DateTime   @updatedAt
 
+  // Geolocalização para controle de ponto
+  latitude           Float?
+  longitude          Float?
+  raioPermitidoMetros Int?      @default(200)
+
   // Relações
-  empresa     Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  usuarios    Usuario[]
-  receitas    ReceitaPreparo[]
-  pops        PopOperacional[]
-  checklists  ChecklistOperacional[]
-  ocorrencias OcorrenciaOperacional[]
+  empresa        Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuarios       Usuario[]
+  receitas       ReceitaPreparo[]
+  pops           PopOperacional[]
+  checklists     ChecklistOperacional[]
+  ocorrencias    OcorrenciaOperacional[]
+  registrosPonto RegistroPonto[]
+  escalas        EscalaTrabalho[]
+  usuariosVinculados UsuarioUnidade[]
 
   @@map("unidades")
 }
@@ -218,6 +296,11 @@ model Usuario {
   // Controle de acesso inicial
   mustResetPassword Boolean @default(false)
 
+  // Sistema de Hierarquia e Permissões
+  nivelHierarquia  NivelHierarquia?
+  perfilAcessoId   String?
+  cargoId          String?
+
   criadoEm     DateTime   @default(now())
   atualizadoEm DateTime   @updatedAt
   ultimoAcessoEm DateTime?
@@ -237,6 +320,26 @@ model Usuario {
   ocorrenciasCriadas OcorrenciaOperacional[] @relation("OcorrenciaCriador")
   notificacoes       Notificacao[]
   tokensResetSenha   TokenResetSenha[]
+
+  // Relações do sistema de permissões
+  perfilAcesso         PerfilAcesso?        @relation(fields: [perfilAcessoId], references: [id])
+  cargo                Cargo?               @relation(fields: [cargoId], references: [id])
+  permissoesUsuario    PermissaoUsuario[]
+  unidadesVinculadas   UsuarioUnidade[]
+  auditoriasAlvo       AuditoriaPermissao[] @relation("UsuarioAlvo")
+  auditoriasAutor      AuditoriaPermissao[] @relation("UsuarioAutor")
+
+  // Relações de ponto
+  registrosPonto           RegistroPonto[]         @relation("PontoColaborador")
+  registrosPontoCriados    RegistroPonto[]         @relation("PontoCriador")
+  jornadasPrevistas        JornadaPrevista[]
+  justificativasPontoCriadas JustificativaPonto[]  @relation("JustificativaCriador")
+  justificativasPontoAprovadas JustificativaPonto[] @relation("JustificativaAprovador")
+  ajustesPontoCriados      AjustePonto[]           @relation("AjusteCriador")
+  bancoHoras               BancoHoras[]
+  fechamentosPonto         FechamentoPonto[]       @relation("FechamentoColaborador")
+  fechamentosPontoFechados FechamentoPonto[]       @relation("FechamentoFechador")
+  auditoriasPonto          AuditoriaPonto[]
 
   @@map("usuarios")
 }
@@ -693,4 +796,406 @@ model OcorrenciaOperacional {
   criador Usuario  @relation("OcorrenciaCriador", fields: [criadoPor], references: [id])
 
   @@map("ocorrencias_operacionais")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Escalas de Trabalho
+// ─────────────────────────────────────────────────────────────
+
+model EscalaTrabalho {
+  id                    String     @id @default(cuid())
+  empresaId             String
+  unidadeId             String?
+  nome                  String     // Ex: "Escala Padrão 5x2", "Escala Cozinha"
+  tipoEscala            TipoEscala @default(cinco_por_dois)
+  jornadaDiariaMinutos  Int        @default(480) // 8 horas
+  intervaloAlmocoMinutos Int       @default(60)  // 1 hora
+  toleranciaAtrasoMinutos Int      @default(10)
+  toleranciaSaidaMinutos  Int      @default(10)
+  ativa                 Boolean    @default(true)
+  criadoEm              DateTime   @default(now())
+  atualizadoEm          DateTime   @updatedAt
+
+  // Relações
+  empresa          Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  unidade          Unidade?         @relation(fields: [unidadeId], references: [id])
+  jornadasPrevistas JornadaPrevista[]
+
+  @@index([empresaId, ativa])
+  @@map("escalas_trabalho")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Jornadas Previstas (horários por dia da semana)
+// ─────────────────────────────────────────────────────────────
+
+model JornadaPrevista {
+  id              String    @id @default(cuid())
+  empresaId       String
+  colaboradorId   String
+  escalaId        String
+  diaSemana       DiaSemana
+  horarioEntrada  String    // "HH:MM" ex: "08:00"
+  horarioSaida    String    // "HH:MM" ex: "17:00"
+  horarioAlmocoInicio String? // "HH:MM" ex: "12:00"
+  horarioAlmocoFim    String? // "HH:MM" ex: "13:00"
+  folga           Boolean   @default(false)
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+
+  // Relações
+  colaborador  Usuario        @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+  escala       EscalaTrabalho @relation(fields: [escalaId], references: [id], onDelete: Cascade)
+
+  @@unique([colaboradorId, escalaId, diaSemana])
+  @@index([empresaId, colaboradorId])
+  @@map("jornadas_previstas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Registros de Ponto (batidas)
+// ─────────────────────────────────────────────────────────────
+
+model RegistroPonto {
+  id                  String              @id @default(cuid())
+  empresaId           String
+  unidadeId           String
+  colaboradorId       String
+  tipoRegistro        TipoRegistroPonto
+  dataReferencia      DateTime            @db.Date
+  horarioRegistro     DateTime            // Horário real da batida
+  horarioServidor     DateTime            @default(now())
+
+  // Geolocalização
+  latitude            Float?
+  longitude           Float?
+  dentroRaioPermitido Boolean             @default(true)
+  distanciaMetros     Float?
+
+  // Metadados
+  origemRegistro      OrigemRegistroPonto @default(app_web)
+  statusRegistro      StatusRegistroPonto @default(valido)
+  observacao          String?
+
+  // Soft delete
+  deletadoEm          DateTime?
+
+  // Auditoria
+  criadoPor           String
+  criadoEm            DateTime            @default(now())
+  atualizadoEm        DateTime            @updatedAt
+
+  // Relações
+  colaborador     Usuario          @relation("PontoColaborador", fields: [colaboradorId], references: [id])
+  criador         Usuario          @relation("PontoCriador", fields: [criadoPor], references: [id])
+  unidade         Unidade          @relation(fields: [unidadeId], references: [id])
+  pausas          PausaPonto[]
+  justificativas  JustificativaPonto[]
+  ajustes         AjustePonto[]
+  auditorias      AuditoriaPonto[]
+
+  @@index([empresaId, colaboradorId, dataReferencia])
+  @@index([empresaId, statusRegistro])
+  @@index([empresaId, unidadeId, dataReferencia])
+  @@index([deletadoEm])
+  @@map("registros_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Pausas
+// ─────────────────────────────────────────────────────────────
+
+model PausaPonto {
+  id               String   @id @default(cuid())
+  empresaId        String
+  registroPontoId  String
+  colaboradorId    String
+  inicio           DateTime
+  fim              DateTime?
+  duracaoMinutos   Int?
+  tipo             String   @default("almoco") // almoco, intervalo, outros
+  criadoEm         DateTime @default(now())
+  atualizadoEm     DateTime @updatedAt
+
+  // Relações
+  registroPonto RegistroPonto @relation(fields: [registroPontoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, colaboradorId])
+  @@map("pausas_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Justificativas
+// ─────────────────────────────────────────────────────────────
+
+model JustificativaPonto {
+  id              String              @id @default(cuid())
+  empresaId       String
+  registroPontoId String?
+  colaboradorId   String
+  dataReferencia  DateTime            @db.Date
+  motivo          String
+  observacao      String?
+  anexoUrl        String?
+  status          StatusJustificativa @default(pendente_aprovacao)
+  aprovadoPor     String?
+  aprovadoEm      DateTime?
+  motivoRecusa    String?
+  criadoPor       String
+  criadoEm        DateTime            @default(now())
+  atualizadoEm    DateTime            @updatedAt
+
+  // Relações
+  registroPonto RegistroPonto? @relation(fields: [registroPontoId], references: [id])
+  criador       Usuario        @relation("JustificativaCriador", fields: [criadoPor], references: [id])
+  aprovador     Usuario?       @relation("JustificativaAprovador", fields: [aprovadoPor], references: [id])
+
+  @@index([empresaId, colaboradorId, dataReferencia])
+  @@map("justificativas_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Ajustes manuais
+// ─────────────────────────────────────────────────────────────
+
+model AjustePonto {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  registroPontoId     String
+  horarioOriginal     DateTime
+  horarioAjustado     DateTime
+  motivo              String
+  criadoPor           String
+  criadoEm            DateTime @default(now())
+
+  // Relações
+  registroPonto RegistroPonto @relation(fields: [registroPontoId], references: [id], onDelete: Cascade)
+  criador       Usuario       @relation("AjusteCriador", fields: [criadoPor], references: [id])
+
+  @@index([empresaId, registroPontoId])
+  @@map("ajustes_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Banco de Horas (saldo diário)
+// ─────────────────────────────────────────────────────────────
+
+model BancoHoras {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  colaboradorId       String
+  dataReferencia      DateTime @db.Date
+
+  // Cálculos em minutos
+  totalTrabalhadoMinutos Int    @default(0)
+  totalPausasMinutos     Int    @default(0)
+  atrasoMinutos          Int    @default(0)
+  saidaAntecipadaMinutos Int    @default(0)
+  horaExtraMinutos       Int    @default(0)
+  bancoPositivoMinutos   Int    @default(0)
+  bancoNegativoMinutos   Int    @default(0)
+  saldoFinalMinutos      Int    @default(0)
+
+  jornadaPrevistaMinutos Int    @default(480)
+
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
+
+  // Relações
+  colaborador Usuario @relation(fields: [colaboradorId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, colaboradorId, dataReferencia])
+  @@index([empresaId, colaboradorId, dataReferencia])
+  @@map("banco_horas")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Fechamento Mensal
+// ─────────────────────────────────────────────────────────────
+
+model FechamentoPonto {
+  id                     String          @id @default(cuid())
+  empresaId              String
+  colaboradorId          String
+  mes                    Int             // 1-12
+  ano                    Int
+  status                 StatusFechamento @default(aberto)
+
+  // Totalizadores em minutos
+  totalTrabalhadoMinutos  Int    @default(0)
+  totalHoraExtraMinutos   Int    @default(0)
+  totalAtrasoMinutos      Int    @default(0)
+  totalFaltas             Int    @default(0)
+  saldoBancoMinutos       Int    @default(0)
+  diasTrabalhados         Int    @default(0)
+
+  fechadoPor             String?
+  fechadoEm              DateTime?
+  observacao             String?
+
+  criadoEm               DateTime        @default(now())
+  atualizadoEm           DateTime        @updatedAt
+
+  // Relações
+  colaborador Usuario  @relation("FechamentoColaborador", fields: [colaboradorId], references: [id], onDelete: Cascade)
+  fechador    Usuario? @relation("FechamentoFechador", fields: [fechadoPor], references: [id])
+
+  @@unique([empresaId, colaboradorId, mes, ano])
+  @@index([empresaId, mes, ano])
+  @@map("fechamento_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PONTO — Auditoria detalhada
+// ─────────────────────────────────────────────────────────────
+
+model AuditoriaPonto {
+  id                 String             @id @default(cuid())
+  empresaId          String
+  registroOriginalId String?
+  tipoAlteracao      TipoAlteracaoPonto
+  valorAnterior      Json?
+  valorNovo          Json?
+  motivo             String?
+  responsavelId      String
+  dataAlteracao      DateTime           @default(now())
+  ip                 String?
+  userAgent          String?
+
+  // Relações
+  registroOriginal RegistroPonto? @relation(fields: [registroOriginalId], references: [id])
+  responsavel      Usuario        @relation(fields: [responsavelId], references: [id])
+
+  @@index([empresaId, dataAlteracao])
+  @@index([registroOriginalId])
+  @@map("auditoria_ponto")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SISTEMA DE HIERARQUIA E PERMISSÕES
+// ─────────────────────────────────────────────────────────────
+
+enum NivelHierarquia {
+  MASTER_LOJA
+  ADMINISTRADOR
+  ADMINISTRATIVO
+  GESTOR_LOCAL
+  COLABORADOR
+}
+
+enum ModuloPermissao {
+  DASHBOARD
+  TAREFAS
+  CHECKLISTS
+  ROTINAS
+  RECEITAS_POPS
+  OCORRENCIAS
+  PONTO_ESCALA
+  USUARIOS_PERMISSOES
+  RELATORIOS
+  CONFIGURACOES_UNIDADE
+}
+
+model Cargo {
+  id           String      @id @default(cuid())
+  empresaId    String
+  nome         String      // Ex: Subgerente, Garçom
+  descricao    String?
+  status       StatusAtivo @default(ativo)
+  criadoEm     DateTime    @default(now())
+  atualizadoEm DateTime    @updatedAt
+
+  // Relações
+  empresa   Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuarios  Usuario[]
+
+  @@map("cargos")
+}
+
+model PerfilAcesso {
+  id           String          @id @default(cuid())
+  empresaId    String
+  nome         String          // Ex: Perfil Padrão Cozinha
+  descricao    String?
+  nivel        NivelHierarquia
+  criadoEm     DateTime        @default(now())
+  atualizadoEm DateTime        @updatedAt
+
+  // Relações
+  empresa          Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permissoesPerfil PermissaoPerfil[]
+  usuarios         Usuario[]
+
+  @@map("perfis_acesso")
+}
+
+model Permissao {
+  id           String          @id @default(cuid())
+  nome         String          @unique // Ex: tarefas:criar, checklists:validar
+  modulo       ModuloPermissao
+  descricao    String
+  criadoEm     DateTime        @default(now())
+
+  // Relações
+  permissoesPerfil  PermissaoPerfil[]
+  permissoesUsuario PermissaoUsuario[]
+
+  @@map("permissoes")
+}
+
+model PermissaoPerfil {
+  perfilId    String
+  permissaoId String
+
+  // Relações
+  perfil    PerfilAcesso @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  permissao Permissao    @relation(fields: [permissaoId], references: [id], onDelete: Cascade)
+
+  @@id([perfilId, permissaoId])
+  @@map("permissoes_perfil")
+}
+
+model PermissaoUsuario {
+  usuarioId   String
+  permissaoId String
+  concedido   Boolean  @default(true)
+
+  // Relações
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  permissao Permissao @relation(fields: [permissaoId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, permissaoId])
+  @@map("permissoes_usuario")
+}
+
+model UsuarioUnidade {
+  usuarioId String
+  unidadeId String
+
+  // Relações
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  unidade Unidade @relation(fields: [unidadeId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, unidadeId])
+  @@map("usuarios_unidades")
+}
+
+model AuditoriaPermissao {
+  id         String          @id @default(cuid())
+  empresaId  String
+  usuarioId  String          // Usuário que teve a permissão alterada
+  autorId    String          // Usuário que realizou a alteração
+  modulo     ModuloPermissao
+  permissao  String          // Nome da permissão alterada
+  acao       String          // 'CONCEDIDA' | 'REVOGADA' | 'ALTERADA_PERFIL'
+  antes      String?         // Valor anterior
+  depois     String?         // Novo valor
+  criadoEm   DateTime        @default(now())
+
+  // Relações
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation("UsuarioAlvo", fields: [usuarioId], references: [id], onDelete: Cascade)
+  autor   Usuario @relation("UsuarioAutor", fields: [autorId], references: [id], onDelete: Cascade)
+
+  @@map("auditorias_permissoes")
 }

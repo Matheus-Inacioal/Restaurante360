@@ -187,8 +187,153 @@ async function main() {
   });
   console.log(`  ✅ Categoria: Geral\n`);
 
-  // ── 7. Usuários ──────────────────────────────────────────────
+  // ── 7. Permissões ─────────────────────────────────────────────
+  console.log("🔑 Criando Permissões...");
+  const permissoesObj = [
+    // Dashboard
+    { nome: "dashboard:visualizar_geral", modulo: "DASHBOARD" as const, descricao: "visualizar dashboard geral" },
+    { nome: "dashboard:visualizar_unidade", modulo: "DASHBOARD" as const, descricao: "visualizar indicadores da unidade" },
+    { nome: "dashboard:visualizar_pendencias", modulo: "DASHBOARD" as const, descricao: "visualizar pendências do dia" },
+    // Tarefas
+    { nome: "tarefas:visualizar", modulo: "TAREFAS" as const, descricao: "visualizar tarefas" },
+    { nome: "tarefas:criar", modulo: "TAREFAS" as const, descricao: "criar tarefas" },
+    { nome: "tarefas:editar", modulo: "TAREFAS" as const, descricao: "editar tarefas" },
+    { nome: "tarefas:excluir", modulo: "TAREFAS" as const, descricao: "excluir tarefas" },
+    { nome: "tarefas:atribuir", modulo: "TAREFAS" as const, descricao: "atribuir tarefas" },
+    { nome: "tarefas:concluir", modulo: "TAREFAS" as const, descricao: "concluir tarefas" },
+    { nome: "tarefas:validar", modulo: "TAREFAS" as const, descricao: "validar tarefas concluídas" },
+    { nome: "tarefas:reabrir", modulo: "TAREFAS" as const, descricao: "reabrir tarefas" },
+    // Checklists
+    { nome: "checklists:visualizar", modulo: "CHECKLISTS" as const, descricao: "visualizar checklists" },
+    { nome: "checklists:criar", modulo: "CHECKLISTS" as const, descricao: "criar modelos de checklist" },
+    { nome: "checklists:editar", modulo: "CHECKLISTS" as const, descricao: "editar modelos de checklist" },
+    { nome: "checklists:excluir", modulo: "CHECKLISTS" as const, descricao: "excluir modelos de checklist" },
+    { nome: "checklists:executar", modulo: "CHECKLISTS" as const, descricao: "executar checklist" },
+    { nome: "checklists:acompanhar", modulo: "CHECKLISTS" as const, descricao: "acompanhar execução" },
+    { nome: "checklists:validar", modulo: "CHECKLISTS" as const, descricao: "validar checklist concluído" },
+    // Rotinas
+    { nome: "rotinas:visualizar", modulo: "ROTINAS" as const, descricao: "visualizar rotinas" },
+    { nome: "rotinas:criar", modulo: "ROTINAS" as const, descricao: "criar rotinas recorrentes" },
+    { nome: "rotinas:editar", modulo: "ROTINAS" as const, descricao: "editar rotinas" },
+    { nome: "rotinas:excluir", modulo: "ROTINAS" as const, descricao: "excluir rotinas" },
+    { nome: "rotinas:atribuir", modulo: "ROTINAS" as const, descricao: "atribuir rotina" },
+    { nome: "rotinas:acompanhar", modulo: "ROTINAS" as const, descricao: "acompanhar rotina" },
+    { nome: "rotinas:validar", modulo: "ROTINAS" as const, descricao: "validar rotina" },
+    // Receitas e POPs
+    { nome: "receitas:visualizar", modulo: "RECEITAS_POPS" as const, descricao: "visualizar receitas" },
+    { nome: "receitas:criar", modulo: "RECEITAS_POPS" as const, descricao: "criar receitas" },
+    { nome: "receitas:editar", modulo: "RECEITAS_POPS" as const, descricao: "editar receitas" },
+    { nome: "receitas:excluir", modulo: "RECEITAS_POPS" as const, descricao: "excluir receitas" },
+    { nome: "pops:visualizar", modulo: "RECEITAS_POPS" as const, descricao: "visualizar POPs" },
+    { nome: "pops:criar", modulo: "RECEITAS_POPS" as const, descricao: "criar POPs" },
+    { nome: "pops:editar", modulo: "RECEITAS_POPS" as const, descricao: "editar POPs" },
+    { nome: "pops:excluir", modulo: "RECEITAS_POPS" as const, descricao: "excluir POPs" },
+    // Ocorrências
+    { nome: "ocorrencias:registrar", modulo: "OCORRENCIAS" as const, descricao: "registrar ocorrência" },
+    { nome: "ocorrencias:visualizar", modulo: "OCORRENCIAS" as const, descricao: "visualizar ocorrências" },
+    { nome: "ocorrencias:editar", modulo: "OCORRENCIAS" as const, descricao: "editar ocorrência" },
+    { nome: "ocorrencias:tratar", modulo: "OCORRENCIAS" as const, descricao: "tratar ocorrência" },
+    { nome: "ocorrencias:concluir", modulo: "OCORRENCIAS" as const, descricao: "concluir ocorrência" },
+    { nome: "ocorrencias:historico", modulo: "OCORRENCIAS" as const, descricao: "visualizar histórico de ocorrências" },
+    // Ponto e Escala
+    { nome: "ponto:bater", modulo: "PONTO_ESCALA" as const, descricao: "bater próprio ponto" },
+    { nome: "ponto:visualizar_proprio", modulo: "PONTO_ESCALA" as const, descricao: "visualizar próprio ponto" },
+    { nome: "ponto:visualizar_saldo_proprio", modulo: "PONTO_ESCALA" as const, descricao: "visualizar saldo próprio" },
+    { nome: "ponto:visualizar_equipe", modulo: "PONTO_ESCALA" as const, descricao: "visualizar ponto da equipe" },
+    { nome: "ponto:visualizar_banco_equipe", modulo: "PONTO_ESCALA" as const, descricao: "visualizar banco de horas da equipe" },
+    { nome: "ponto:justificar", modulo: "PONTO_ESCALA" as const, descricao: "justificar ponto" },
+    { nome: "ponto:corrigir", modulo: "PONTO_ESCALA" as const, descricao: "corrigir ponto" },
+    { nome: "ponto:aprovar_ajuste", modulo: "PONTO_ESCALA" as const, descricao: "aprovar ajuste de ponto" },
+    { nome: "ponto:configurar_escala", modulo: "PONTO_ESCALA" as const, descricao: "configurar escala" },
+    { nome: "ponto:relatorio", modulo: "PONTO_ESCALA" as const, descricao: "gerar relatório de ponto" },
+    // Usuários e Permissões
+    { nome: "usuarios:visualizar", modulo: "USUARIOS_PERMISSOES" as const, descricao: "visualizar usuários" },
+    { nome: "usuarios:criar", modulo: "USUARIOS_PERMISSOES" as const, descricao: "criar usuários" },
+    { nome: "usuarios:editar", modulo: "USUARIOS_PERMISSOES" as const, descricao: "editar usuários" },
+    { nome: "usuarios:desativar", modulo: "USUARIOS_PERMISSOES" as const, descricao: "desativar usuários" },
+    { nome: "usuarios:vincular_unidade", modulo: "USUARIOS_PERMISSOES" as const, descricao: "vincular usuário à unidade" },
+    { nome: "usuarios:vincular_area", modulo: "USUARIOS_PERMISSOES" as const, descricao: "vincular usuário à área" },
+    { nome: "usuarios:definir_cargo", modulo: "USUARIOS_PERMISSOES" as const, descricao: "definir cargo/função" },
+    { nome: "usuarios:alterar_permissoes", modulo: "USUARIOS_PERMISSOES" as const, descricao: "alterar permissões" },
+    { nome: "usuarios:alterar_hierarquia", modulo: "USUARIOS_PERMISSOES" as const, descricao: "alterar hierarquia" },
+    // Relatórios
+    { nome: "relatorios:visualizar_operacionais", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios operacionais" },
+    { nome: "relatorios:visualizar_tarefas", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios de tarefas" },
+    { nome: "relatorios:visualizar_checklists", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios de checklists" },
+    { nome: "relatorios:visualizar_rotinas", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios de rotinas" },
+    { nome: "relatorios:visualizar_ocorrencias", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios de ocorrências" },
+    { nome: "relatorios:visualizar_ponto", modulo: "RELATORIOS" as const, descricao: "visualizar relatórios de ponto" },
+    { nome: "relatorios:exportar_pdf", modulo: "RELATORIOS" as const, descricao: "exportar PDF" },
+    { nome: "relatorios:exportar_excel", modulo: "RELATORIOS" as const, descricao: "exportar Excel" },
+    { nome: "relatorios:exportar_csv", modulo: "RELATORIOS" as const, descricao: "exportar CSV" },
+    // Configurações
+    { nome: "configuracoes:editar_unidade", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "editar dados da unidade" },
+    { nome: "configuracoes:areas", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar áreas" },
+    { nome: "configuracoes:cargos", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar cargos" },
+    { nome: "configuracoes:horarios", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar horários" },
+    { nome: "configuracoes:geolocalizacao_ponto", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar geolocalização do ponto" },
+    { nome: "configuracoes:permissoes_padrao", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar permissões padrão" },
+    { nome: "configuracoes:modulos_ativos", modulo: "CONFIGURACOES_UNIDADE" as const, descricao: "configurar módulos ativos" }
+  ];
+
+  for (const perm of permissoesObj) {
+    await prisma.permissao.upsert({
+      where: { nome: perm.nome },
+      update: {
+        modulo: perm.modulo,
+        descricao: perm.descricao
+      },
+      create: {
+        nome: perm.nome,
+        modulo: perm.modulo,
+        descricao: perm.descricao
+      }
+    });
+  }
+  console.log(`  ✅ ${permissoesObj.length} permissões populadas!\n`);
+
+  // ── 8. Usuários ──────────────────────────────────────────────
   console.log("👤 Criando Usuários (PostgreSQL + Bcrypt)...");
+
+  // Criar um PerfilAcesso padrão para colaboradores operacionais
+  const perfilOperador = await prisma.perfilAcesso.upsert({
+    where: { id: "seed-perfil-operador" },
+    update: {},
+    create: {
+      id: "seed-perfil-operador",
+      empresaId: IDS.empresa,
+      nome: "Colaborador Operacional Padrão",
+      descricao: "Perfil de acesso inicial para colaboradores operacionais",
+      nivel: "COLABORADOR",
+    }
+  });
+
+  // Vincular permissões básicas ao perfil do operador
+  const permissoesOperador = [
+    "ponto:bater", "ponto:visualizar_proprio", "ponto:visualizar_saldo_proprio",
+    "tarefas:visualizar", "tarefas:concluir",
+    "checklists:visualizar", "checklists:executar",
+    "rotinas:visualizar"
+  ];
+
+  for (const permNome of permissoesOperador) {
+    const perm = await prisma.permissao.findUnique({ where: { nome: permNome } });
+    if (perm) {
+      await prisma.permissaoPerfil.upsert({
+        where: {
+          perfilId_permissaoId: {
+            perfilId: perfilOperador.id,
+            permissaoId: perm.id
+          }
+        },
+        update: {},
+        create: {
+          perfilId: perfilOperador.id,
+          permissaoId: perm.id
+        }
+      });
+    }
+  }
 
   const usuariosSeed = [
     {
@@ -196,40 +341,72 @@ async function main() {
       email: "admin@r360.com",
       nome: "Admin SaaS",
       papel: "saasAdmin" as const,
+      nivelHierarquia: null,
       empresaId: null,
       unidadeId: null,
       areaId: null,
       funcaoId: null,
+      perfilAcessoId: null,
     },
     {
       uid: IDS.uidGestor,
       email: "gestor@demo.com",
       nome: "Gestor Demo",
       papel: "gestorCorporativo" as const,
+      nivelHierarquia: "MASTER_LOJA" as const,
       empresaId: IDS.empresa,
       unidadeId: null,
       areaId: null,
       funcaoId: null,
+      perfilAcessoId: null,
+    },
+    {
+      uid: "seed-uid-administrador",
+      email: "admin_empresa@demo.com",
+      nome: "Administrador Demo",
+      papel: "gestorCorporativo" as const,
+      nivelHierarquia: "ADMINISTRADOR" as const,
+      empresaId: IDS.empresa,
+      unidadeId: null,
+      areaId: null,
+      funcaoId: null,
+      perfilAcessoId: null,
+    },
+    {
+      uid: "seed-uid-administrativo",
+      email: "administrativo@demo.com",
+      nome: "Carlos Administrativo",
+      papel: "gestorLocal" as const,
+      nivelHierarquia: "ADMINISTRATIVO" as const,
+      empresaId: IDS.empresa,
+      unidadeId: IDS.unidade,
+      areaId: null,
+      funcaoId: null,
+      perfilAcessoId: null,
     },
     {
       uid: IDS.uidLocal,
       email: "local@demo.com",
       nome: "Gestor Local",
       papel: "gestorLocal" as const,
+      nivelHierarquia: "GESTOR_LOCAL" as const,
       empresaId: IDS.empresa,
       unidadeId: IDS.unidade,
       areaId: null,
       funcaoId: null,
+      perfilAcessoId: null,
     },
     {
       uid: IDS.uidOperador,
       email: "operador@demo.com",
       nome: "Operador Demo",
       papel: "operacional" as const,
+      nivelHierarquia: "COLABORADOR" as const,
       empresaId: IDS.empresa,
       unidadeId: IDS.unidade,
       areaId: IDS.areaCozinha,
       funcaoId: IDS.funcaoChef,
+      perfilAcessoId: perfilOperador.id,
     },
   ];
 
@@ -242,11 +419,13 @@ async function main() {
       update: {
         nome: u.nome,
         papel: u.papel,
+        nivelHierarquia: u.nivelHierarquia,
         status: "ativo",
         empresaId: u.empresaId,
         unidadeId: u.unidadeId,
         areaId: u.areaId,
         funcaoId: u.funcaoId,
+        perfilAcessoId: u.perfilAcessoId,
         senhaHash: hash,
         mustResetPassword: false,
       },
@@ -255,17 +434,35 @@ async function main() {
         email: u.email,
         nome: u.nome,
         papel: u.papel,
+        nivelHierarquia: u.nivelHierarquia,
         status: "ativo",
         empresaId: u.empresaId,
         unidadeId: u.unidadeId,
         areaId: u.areaId,
         funcaoId: u.funcaoId,
+        perfilAcessoId: u.perfilAcessoId,
         senhaHash: hash,
         mustResetPassword: false,
       },
     });
 
-    console.log(`  ✅ ${u.papel.padEnd(20)} → ${u.email}`);
+    if (u.unidadeId) {
+      await prisma.usuarioUnidade.upsert({
+        where: {
+          usuarioId_unidadeId: {
+            usuarioId: u.uid,
+            unidadeId: u.unidadeId
+          }
+        },
+        update: {},
+        create: {
+          usuarioId: u.uid,
+          unidadeId: u.unidadeId
+        }
+      });
+    }
+
+    console.log(`  ✅ ${String(u.nivelHierarquia || u.papel).padEnd(20)} → ${u.email}`);
   }
 
   // ── 8. Resumo ────────────────────────────────────────────────

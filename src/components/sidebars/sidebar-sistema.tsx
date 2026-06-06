@@ -24,14 +24,17 @@ import {
     SidebarMenuButton,
 } from '@/components/ui/sidebar';
 
+import { usePerfil } from '@/hooks/use-perfil';
+
 const navItems = [
     { href: '/sistema', label: 'Visão Geral', icon: LayoutDashboard },
     { href: '/sistema/minhas-tarefas', label: 'Minhas Tarefas', icon: ClipboardCheck },
     { href: '/sistema/rotinas', label: 'Rotinas', icon: CalendarClock },
     { href: '/sistema/processos', label: 'Processos', icon: BookOpen },
-    { href: '/sistema/empresas', label: 'Empresas', icon: Building2 },
-    { href: '/sistema/assinaturas', label: 'Assinaturas', icon: ShieldCheck },
-    { href: '/sistema/usuarios', label: 'Usuários do Sistema', icon: Users },
+    { href: '/sistema/empresas', label: 'Empresas', icon: Building2, adminOnly: true },
+    { href: '/sistema/assinaturas', label: 'Assinaturas', icon: ShieldCheck, adminOnly: true },
+    { href: '/sistema/usuarios', label: 'Usuários do Sistema', icon: Users, adminOnly: true },
+    { href: '/sistema/usuarios-permissoes', label: 'Permissões da Equipe', icon: ShieldCheck },
     { href: '/sistema/notificacoes', label: 'Notificações', icon: Bell },
     { href: '/sistema/ajuda', label: 'Ajuda', icon: LifeBuoy },
     { href: '/sistema/configuracoes', label: 'Configurações', icon: Settings },
@@ -39,6 +42,10 @@ const navItems = [
 
 export function SidebarSistema() {
     const pathname = usePathname();
+    const { perfilUsuario } = usePerfil();
+
+    const isSaaSAdmin = perfilUsuario?.papel === 'saasAdmin';
+    const itemsFiltrados = navItems.filter(item => !item.adminOnly || isSaaSAdmin);
 
     return (
         <Sidebar side="left" variant="sidebar" collapsible="icon">
@@ -54,7 +61,7 @@ export function SidebarSistema() {
             </SidebarHeader>
             <SidebarContent className="p-2">
                 <SidebarMenu>
-                    {navItems.map((item) => {
+                    {itemsFiltrados.map((item) => {
                         const isActive = item.href === '/sistema'
                             ? pathname === '/sistema'
                             : pathname.startsWith(item.href);
