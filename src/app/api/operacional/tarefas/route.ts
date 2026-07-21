@@ -1,64 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { garantirAcessoEmpresa } from '@/server/auth/garantirAcessoEmpresa';
 import { prisma } from '@/lib/prisma';
-import { obterSessao } from '@/server/auth/obterSessao';
 
-export async function GET(request: NextRequest) {
-    try {
-        const auth = await obterSessao();
-        if (!auth) {
-            return NextResponse.json({ erro: 'Não autorizado' }, { status: 401 });
-        }
+/**
+ * GET /api/operacional/tarefas
+ *
+ * Lista as tarefas atribuídas ao colaborador logado (responsavelId = uid).
+ * Cada Tarefa é adaptada para o formato "checklist" esperado pelo frontend,
+ * onde cada item de `itensVerificacao` vira uma "task" interna.
+ */
 
-        const empresaId = auth.empresaId;
-        const uid = auth.uid;
+interface ItemVerificacao {
+  id: string;
+  texto: string;
+  concluido: boolean;
+  exigeFoto?: boolean;
+  fotos?: string[];
+  concluidoEm?: string | null;
+}
 
-        if (!empresaId) {
-            return NextResponse.json({ erro: 'Usuário sem empresa vinculada' }, { status: 403 });
-        }
+export async function GET(req: NextRequest) {
+  const acesso = await garantirAcessoEmpresa(req);
+  if (acesso instanceof Response) return acesso;
 
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
+  try {
+    const uid = acesso.sessao.uid;
 
-        const amanha = new Date(hoje);
-        amanha.setDate(amanha.getDate() + 1);
+    const tarefas = await prisma.tarefa.findMany({
+      where: {
+        empresaId: acesso.empresaId,
+        responsavelId: uid,
+      },
+      orderBy: { criadoEm: 'desc' },
+    });
 
-        // Busca checklists atribuídos ao usuário logado na data de hoje
-        const checklists = await prisma.checklist.findMany({
-            where: {
-                empresaId,
-                responsavelId: uid,
-                data: {
-                    gte: hoje,
-                    lt: amanha
-                }
-            },
-            include: {
-                tarefas: true
-            }
-        });
+    const checklistsAdaptados = tarefas.map((t) => {
+      const itens = (Array.isArray(t.itensVerificacao)
+        ? t.itensVerificacao
+        : []) as unknown as ItemVerificacao[];
 
-        // Adapta para o formato esperado pelo frontend
-        const checklistsAdaptados = checklists.map(c => ({
-            id: c.id,
-            processId: c.processoId,
-            processName: c.nome,
-            assignedTo: c.responsavelId,
-            shift: c.turno,
-            date: c.data.toISOString().split('T')[0],
-            status: 'active', // mock
-            tasks: c.tarefas.map(t => ({
-                id: t.id,
-                title: t.titulo,
-                description: t.descricao,
-                requiresPhoto: t.exigeFoto,
-                status: t.status === "concluida" ? "done" : "pending",
-                completedAt: t.concluidaEm ? t.concluidaEm.toISOString() : null,
-                photoUrls: t.fotos || []
-            }))
-        }));
+      return {
+        id: t.id,
+        processName: t.titulo,
+        description: t.descricao ?? null,
+        assignedTo: t.responsavelId,
+        status: t.status,
+        prazo: t.prazo ? t.prazo.toISOString() : null,
+        tasks: itens.map((item) => ({
+          id: item.id,
+          title: item.texto,
+          requiresPhoto: item.exigeFoto ?? false,
+          status: item.concluido ? 'done' : 'pending',
+          completedAt: item.concluidoEm ?? null,
+          photoUrls: item.fotos ?? [],
+        })),
+      };
+    });
 
-        return NextResponse.json({ sucesso: true, checklists: checklistsAdaptados });
-    } catch (error: any) {
-        return NextResponse.json({ sucesso: false, erro: error.message }, { status: 500 });
-    }
+    return NextResponse.json({ sucesso: true, checklists: checklistsAdaptados });
+  } catch (error: any) {
+    console.error('[GET /api/operacional/tarefas] Erro:', error);
+    return NextResponse.json(
+      { sucesso: false, erro: 'Falha ao listar tarefas.' },
+      { status: 500 }
+    );
+  }
 }

@@ -14,6 +14,6 @@ module.exports = {
   },
 
   datasource: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DIRECT_URL,
   },
 };

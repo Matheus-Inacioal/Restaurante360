@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
             data: {
                 ...body,
                 empresaId: acesso.empresaId,
-                criadoPor: acesso.usuarioId
+                criadoPor: acesso.sessao.uid
             }
         });
         return NextResponse.json({ ok: true, data: novo });

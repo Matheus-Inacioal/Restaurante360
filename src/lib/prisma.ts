@@ -14,6 +14,8 @@ import pg from "pg";
 // Pool de conexões PostgreSQL (gerenciado pelo driver nativo pg)
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 1,
+  idleTimeoutMillis: 10000,
 });
 
 // Adapter do Prisma para usar o pool do pg

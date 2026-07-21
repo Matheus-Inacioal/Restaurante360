@@ -3,7 +3,8 @@
 // Inclui entidades operacionais (Onda 2) e financeiras (Onda 3)
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -191,6 +192,7 @@ model Empresa {
   cargos          Cargo[]
   perfisAcesso    PerfilAcesso[]
   auditoriasPermissao AuditoriaPermissao[]
+  usuariosVinculados  UsuarioEmpresa[]
 
   @@map("empresas")
 }
@@ -326,6 +328,7 @@ model Usuario {
   cargo                Cargo?               @relation(fields: [cargoId], references: [id])
   permissoesUsuario    PermissaoUsuario[]
   unidadesVinculadas   UsuarioUnidade[]
+  empresasVinculadas   UsuarioEmpresa[]
   auditoriasAlvo       AuditoriaPermissao[] @relation("UsuarioAlvo")
   auditoriasAutor      AuditoriaPermissao[] @relation("UsuarioAutor")
 
@@ -1178,6 +1181,24 @@ model UsuarioUnidade {
 
   @@id([usuarioId, unidadeId])
   @@map("usuarios_unidades")
+}
+
+model UsuarioEmpresa {
+  usuarioId String
+  empresaId String
+
+  papel           PapelUsuario
+  nivelHierarquia NivelHierarquia?
+
+  criadoEm DateTime @default(now())
+
+  // Relações
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, empresaId])
+  @@index([empresaId])
+  @@map("usuarios_empresas")
 }
 
 model AuditoriaPermissao {
